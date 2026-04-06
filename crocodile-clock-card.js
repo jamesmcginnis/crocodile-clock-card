@@ -1322,7 +1322,7 @@ class CrocodileClockCardEditor extends HTMLElement {
 
     // Popup URL
     const urlInputEl = root.getElementById('cc_popup_url');
-    if (urlInputEl) urlInputEl.oninput = () => this._set('popup_url', urlInputEl.value);
+    if (urlInputEl) urlInputEl.onchange = () => this._set('popup_url', urlInputEl.value);
 
     // Opacity slider
     const opEl  = root.getElementById('cc_card_opacity');
