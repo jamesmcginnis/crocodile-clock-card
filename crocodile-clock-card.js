@@ -8,7 +8,7 @@
  * Author:     James McGinnis
  */
 
-const CC_VERSION = '1.4.0';
+const CC_VERSION = '1.5.0';
 
 // ── Canvas roundRect polyfill ─────────────────────────────────────
 (function () {
@@ -730,19 +730,29 @@ class CrocodileClockCard extends HTMLElement {
     const tz  = (this._config?.timezone || '').trim();
     if (tz) {
       try {
-        const fmt = new Intl.DateTimeFormat('en-US', {
-          timeZone: tz,
-          hour:     'numeric',
-          minute:   'numeric',
-          second:   'numeric',
-          hour12:   false,
-        });
-        const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]));
-        const h  = parseInt(parts.hour,   10) % 24;
-        const m  = parseInt(parts.minute, 10);
-        const s  = parseInt(parts.second, 10);
+        // Cache the formatter — reconstructing every frame (60fps) is wasteful
+        if (!this._tzFmt || this._tzFmtKey !== tz) {
+          this._tzFmtKey = tz;
+          this._tzFmt    = new Intl.DateTimeFormat('en-US', {
+            timeZone: tz,
+            hour:     'numeric',
+            minute:   'numeric',
+            second:   'numeric',
+            hour12:   false,
+          });
+        }
+        const parts = Object.fromEntries(
+          this._tzFmt.formatToParts(now).map(p => [p.type, p.value])
+        );
+        // hour12:false can return '24' at midnight on some engines — normalise to 0
+        const h = parseInt(parts.hour,   10) % 24;
+        const m = parseInt(parts.minute, 10);
+        const s = parseInt(parts.second, 10);
         return { h, m, s, ms: now.getMilliseconds() };
-      } catch (_) { /* invalid tz — fall through */ }
+      } catch (e) {
+        console.warn('[CrocodileClockCard] Invalid timezone:', tz, e);
+        this._tzFmt = null;
+      }
     }
     return {
       h:  now.getHours(),
