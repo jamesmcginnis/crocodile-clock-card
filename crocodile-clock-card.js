@@ -1,14 +1,12 @@
 /**
  * Crocodile Clock Card
- * Home Assistant custom Lovelace card — Beautiful analog clock with seven
+ * Home Assistant custom Lovelace card — Beautiful analog clock with twelve
  * distinct clock faces, smooth sweep or mechanical tick second hand,
  * and a glassmorphic popup with digital clock + interactive calendar.
  *
  * Repository: https://github.com/jamesmcginnis/crocodile-clock-card
  * Author:     James McGinnis
  */
-
-const CC_VERSION = '2.0.0';
 
 // ── Canvas roundRect polyfill ─────────────────────────────────────
 (function () {
@@ -40,13 +38,18 @@ const CC_KEYFRAMES = `
 
 // ── Clock face catalogue ───────────────────────────────────────────
 const CC_FACES = [
-  { value: 'classic',  label: 'Classic',  symbol: '🕐' },
-  { value: 'minimal',  label: 'Minimal',  symbol: '·' },
-  { value: 'roman',    label: 'Roman',    symbol: 'XII' },
-  { value: 'modern',   label: 'Modern',   symbol: '3' },
-  { value: 'luxury',   label: 'Luxury',   symbol: '✦' },
-  { value: 'skeleton', label: 'Skeleton', symbol: '⚙' },
-  { value: 'neon',     label: 'Neon',     symbol: '◎' },
+  { value: 'classic',   label: 'Classic',   symbol: '🕐' },
+  { value: 'minimal',   label: 'Minimal',   symbol: '·' },
+  { value: 'roman',     label: 'Roman',     symbol: 'XII' },
+  { value: 'modern',    label: 'Modern',    symbol: '3' },
+  { value: 'luxury',    label: 'Luxury',    symbol: '✦' },
+  { value: 'skeleton',  label: 'Skeleton',  symbol: '⚙' },
+  { value: 'neon',      label: 'Neon',      symbol: '◎' },
+  { value: 'retro',     label: 'Retro',     symbol: 'IX' },
+  { value: 'sport',     label: 'Sport',     symbol: '▮' },
+  { value: 'compass',   label: 'Compass',   symbol: 'N' },
+  { value: 'art_deco',  label: 'Art Deco',  symbol: '❖' },
+  { value: 'celestial', label: 'Celestial', symbol: '✧' },
 ];
 
 // ── Helper: hex colour to rgba ─────────────────────────────────────
@@ -218,13 +221,18 @@ class CrocodileClockDrawer {
     ctx.stroke();
 
     switch (face) {
-      case 'minimal':  this._faceMinimal(r, accent, text);  break;
-      case 'roman':    this._faceRoman(r, accent, text);    break;
-      case 'modern':   this._faceModern(r, accent, text);   break;
-      case 'luxury':   this._faceLuxury(r, accent, text);   break;
-      case 'skeleton': this._faceSkeleton(r, accent, text); break;
-      case 'neon':     this._faceNeon(r, accent, text);     break;
-      default:         this._faceClassic(r, accent, text);  break;
+      case 'minimal':   this._faceMinimal(r, accent, text);   break;
+      case 'roman':     this._faceRoman(r, accent, text);     break;
+      case 'modern':    this._faceModern(r, accent, text);    break;
+      case 'luxury':    this._faceLuxury(r, accent, text);    break;
+      case 'skeleton':  this._faceSkeleton(r, accent, text);  break;
+      case 'neon':      this._faceNeon(r, accent, text);      break;
+      case 'retro':     this._faceRetro(r, accent, text);     break;
+      case 'sport':     this._faceSport(r, accent, text);     break;
+      case 'compass':   this._faceCompass(r, accent, text);   break;
+      case 'art_deco':  this._faceArtDeco(r, accent, text);   break;
+      case 'celestial': this._faceCelestial(r, accent, text); break;
+      default:          this._faceClassic(r, accent, text);   break;
     }
   }
 
@@ -462,6 +470,267 @@ class CrocodileClockDrawer {
     ctx.restore();
   }
 
+  // ── Retro ─────────────────────────────────────────────────────────
+  _faceRetro(r, accent, text) {
+    const ctx  = this.ctx;
+    const warm = '#D4A853';
+
+    // Decorative double inner ring
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.88, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(212,168,83,0.40)'; ctx.lineWidth = 1.2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.84, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(212,168,83,0.16)'; ctx.lineWidth = 0.5; ctx.stroke();
+
+    // Minute ticks
+    for (let i = 0; i < 60; i++) {
+      if (i % 5 === 0) continue;
+      const a = (i / 60) * 2 * Math.PI - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.855, Math.sin(a) * r * 0.855);
+      ctx.lineTo(Math.cos(a) * r * 0.875, Math.sin(a) * r * 0.875);
+      ctx.strokeStyle = 'rgba(212,168,83,0.35)'; ctx.lineWidth = 0.7; ctx.lineCap = 'butt'; ctx.stroke();
+    }
+    // Hour ticks — warm gold batons
+    for (let i = 0; i < 12; i++) {
+      const a     = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      const isQ   = i % 3 === 0;
+      const inner = r * (isQ ? 0.760 : 0.820);
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+      ctx.lineTo(Math.cos(a) * r * 0.875, Math.sin(a) * r * 0.875);
+      ctx.strokeStyle = warm; ctx.lineWidth = isQ ? 3.0 : 1.4; ctx.lineCap = 'round'; ctx.stroke();
+    }
+    // Serif all-12 numerals
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = text;
+    for (let i = 1; i <= 12; i++) {
+      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      ctx.font = `500 ${r * 0.128}px 'Times New Roman', Georgia, serif`;
+      ctx.fillText(String(i), Math.cos(a) * r * 0.665, Math.sin(a) * r * 0.665);
+    }
+    // Manufacturer-style text in centre
+    ctx.fillStyle = 'rgba(212,168,83,0.22)';
+    ctx.font = `400 ${r * 0.055}px 'Times New Roman', Georgia, serif`;
+    ctx.fillText('AUTOMATIC', 0, r * 0.32);
+  }
+
+  // ── Sport ─────────────────────────────────────────────────────────
+  _faceSport(r, accent, text) {
+    const ctx = this.ctx;
+
+    // Outer tachymeter-style ring of dots
+    for (let i = 0; i < 60; i++) {
+      const a      = (i / 60) * 2 * Math.PI - Math.PI / 2;
+      const isHour = i % 5 === 0;
+      ctx.beginPath();
+      ctx.arc(Math.cos(a) * r * 0.915, Math.sin(a) * r * 0.915,
+        isHour ? r * 0.020 : r * 0.009, 0, 2 * Math.PI);
+      ctx.fillStyle = isHour ? accent : 'rgba(255,255,255,0.22)';
+      ctx.fill();
+    }
+    // Bold rectangular hour markers
+    for (let i = 0; i < 12; i++) {
+      const a    = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      const isQ  = i % 3 === 0;
+      const barH = r * (isQ ? 0.135 : 0.085);
+      const barW = r * (isQ ? 0.038 : 0.022);
+      const dist = r * 0.795;
+      ctx.save();
+      ctx.rotate(a + Math.PI / 2);
+      ctx.fillStyle = isQ ? accent : text;
+      ctx.beginPath();
+      ctx.rect(-barW / 2, -dist - barH, barW, barH);
+      ctx.fill();
+      // Highlight stripe on quarter markers
+      if (isQ) {
+        ctx.fillStyle = 'rgba(255,255,255,0.25)';
+        ctx.beginPath();
+        ctx.rect(-barW * 0.22, -dist - barH + barW, barW * 0.44, barH * 0.45);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+    // Bold quarter numerals
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = text;
+    [[12, 0], [3, 3], [6, 6], [9, 9]].forEach(([n, i]) => {
+      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      ctx.font = `900 ${r * 0.158}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif`;
+      ctx.fillText(String(n), Math.cos(a) * r * 0.615, Math.sin(a) * r * 0.615);
+    });
+  }
+
+  // ── Compass ───────────────────────────────────────────────────────
+  _faceCompass(r, accent, text) {
+    const ctx = this.ctx;
+
+    // Reference rings
+    [0.76, 0.56].forEach(rf => {
+      ctx.beginPath(); ctx.arc(0, 0, r * rf, 0, 2 * Math.PI);
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.7; ctx.stroke();
+    });
+    // Degree-style minute ticks
+    for (let i = 0; i < 60; i++) {
+      if (i % 5 === 0) continue;
+      const a = (i / 60) * 2 * Math.PI - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.89, Math.sin(a) * r * 0.89);
+      ctx.lineTo(Math.cos(a) * r * 0.925, Math.sin(a) * r * 0.925);
+      ctx.strokeStyle = 'rgba(255,255,255,0.20)'; ctx.lineWidth = 0.6; ctx.lineCap = 'butt'; ctx.stroke();
+    }
+    // Cardinal hour ticks
+    for (let i = 0; i < 12; i++) {
+      const a    = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      const isC  = i % 3 === 0;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * (isC ? 0.795 : 0.845), Math.sin(a) * r * (isC ? 0.795 : 0.845));
+      ctx.lineTo(Math.cos(a) * r * 0.925, Math.sin(a) * r * 0.925);
+      ctx.strokeStyle = isC ? accent : 'rgba(255,255,255,0.40)';
+      ctx.lineWidth = isC ? 2.8 : 1.0; ctx.lineCap = 'round'; ctx.stroke();
+    }
+    // N / E / S / W labels
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    [['N', 0], ['E', 3], ['S', 6], ['W', 9]].forEach(([lbl, i]) => {
+      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      ctx.font = `800 ${r * 0.145}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif`;
+      ctx.fillStyle = lbl === 'N' ? accent : text;
+      ctx.fillText(lbl, Math.cos(a) * r * 0.630, Math.sin(a) * r * 0.630);
+    });
+    // Subtle intercardinal labels
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    ctx.font = `600 ${r * 0.075}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif`;
+    [['NE', 1.5], ['SE', 4.5], ['SW', 7.5], ['NW', 10.5]].forEach(([lbl, i]) => {
+      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      ctx.fillText(lbl, Math.cos(a) * r * 0.680, Math.sin(a) * r * 0.680);
+    });
+  }
+
+  // ── Art Deco ──────────────────────────────────────────────────────
+  _faceArtDeco(r, accent, text) {
+    const ctx  = this.ctx;
+    const gold = '#B8963E';
+
+    // Decorative outer ring
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.905, 0, 2 * Math.PI);
+    ctx.strokeStyle = gold; ctx.lineWidth = 2.2; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.860, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(184,150,62,0.28)'; ctx.lineWidth = 0.6; ctx.stroke();
+
+    // Minute dashes
+    for (let i = 0; i < 60; i++) {
+      if (i % 5 === 0) continue;
+      const a = (i / 60) * 2 * Math.PI - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.870, Math.sin(a) * r * 0.870);
+      ctx.lineTo(Math.cos(a) * r * 0.900, Math.sin(a) * r * 0.900);
+      ctx.strokeStyle = 'rgba(184,150,62,0.32)'; ctx.lineWidth = 0.6; ctx.stroke();
+    }
+    // Stepped triangular hour markers
+    for (let i = 0; i < 12; i++) {
+      const a    = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      const isMaj = i % 3 === 0;
+      ctx.save();
+      ctx.rotate(a + Math.PI / 2);
+      const dist = r * 0.830;
+      const h    = r * (isMaj ? 0.115 : 0.068);
+      const w    = r * (isMaj ? 0.038 : 0.022);
+      ctx.beginPath();
+      ctx.moveTo(0,       -dist);
+      ctx.lineTo( w,      -dist + h);
+      ctx.lineTo( w * 0.4,-dist + h * 0.68);
+      ctx.lineTo(0,       -dist + h * 0.85);
+      ctx.lineTo(-w * 0.4,-dist + h * 0.68);
+      ctx.lineTo(-w,      -dist + h);
+      ctx.closePath();
+      ctx.fillStyle = isMaj ? gold : 'rgba(184,150,62,0.55)';
+      ctx.fill();
+      ctx.restore();
+    }
+    // Geometric inner ring
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.42, 0, 2 * Math.PI);
+    ctx.strokeStyle = 'rgba(184,150,62,0.18)'; ctx.lineWidth = 3.5; ctx.stroke();
+
+    // Quarter numerals — serif, elegant
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    [[12, 0], [3, 3], [6, 6], [9, 9]].forEach(([n, i]) => {
+      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      ctx.font      = `600 ${r * 0.132}px 'Times New Roman', Georgia, serif`;
+      ctx.fillStyle = text;
+      ctx.fillText(String(n), Math.cos(a) * r * 0.640, Math.sin(a) * r * 0.640);
+    });
+    // Art deco corner accents at non-quarter hours
+    ctx.fillStyle = 'rgba(184,150,62,0.40)';
+    ctx.font      = `400 ${r * 0.075}px 'Times New Roman', Georgia, serif`;
+    [1, 2, 4, 5, 7, 8, 10, 11].forEach(i => {
+      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      ctx.fillText('·', Math.cos(a) * r * 0.640, Math.sin(a) * r * 0.640);
+    });
+  }
+
+  // ── Celestial ─────────────────────────────────────────────────────
+  _faceCelestial(r, accent, text) {
+    const ctx  = this.ctx;
+    const star = accent || '#FFD700';
+
+    // Orbit rings
+    [0.885, 0.650, 0.480].forEach((rf, i) => {
+      ctx.beginPath(); ctx.arc(0, 0, r * rf, 0, 2 * Math.PI);
+      ctx.strokeStyle = `rgba(255,255,255,${0.04 + i * 0.02})`; ctx.lineWidth = 0.6; ctx.stroke();
+    });
+    // Star-field minute markers
+    for (let i = 0; i < 60; i++) {
+      if (i % 5 === 0) continue;
+      const a  = (i / 60) * 2 * Math.PI - Math.PI / 2;
+      const cx = Math.cos(a) * r * 0.885;
+      const cy = Math.sin(a) * r * 0.885;
+      ctx.beginPath(); ctx.arc(cx, cy, r * 0.011, 0, 2 * Math.PI);
+      ctx.fillStyle = 'rgba(255,255,255,0.22)'; ctx.fill();
+    }
+    // Star-shaped hour markers
+    for (let i = 0; i < 12; i++) {
+      const a    = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      const isMaj = i % 3 === 0;
+      const dist = r * 0.820;
+      const px   = Math.cos(a) * dist;
+      const py   = Math.sin(a) * dist;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.shadowColor = star; ctx.shadowBlur = isMaj ? 12 : 6;
+      this._drawStar(ctx, 0, 0,
+        r * (isMaj ? 0.050 : 0.028),
+        r * (isMaj ? 0.022 : 0.012),
+        isMaj ? 5 : 4);
+      ctx.fillStyle = isMaj ? star : 'rgba(255,255,255,0.55)';
+      ctx.fill();
+      ctx.restore();
+    }
+    // Glowing 12 numeral
+    ctx.save();
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = star; ctx.shadowColor = star; ctx.shadowBlur = 14;
+    ctx.font = `700 ${r * 0.142}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', monospace`;
+    ctx.fillText('12', 0, -r * 0.632);
+    ctx.restore();
+    // 3, 6, 9 subtle
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = `500 ${r * 0.095}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif`;
+    [[3, 3], [6, 6], [9, 9]].forEach(([n, i]) => {
+      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
+      ctx.fillText(String(n), Math.cos(a) * r * 0.635, Math.sin(a) * r * 0.635);
+    });
+  }
+
+  /** Helper: draw a star polygon path (does not fill — caller fills) */
+  _drawStar(ctx, cx, cy, outerR, innerR, points) {
+    ctx.beginPath();
+    for (let i = 0; i < points * 2; i++) {
+      const rr = i % 2 === 0 ? outerR : innerR;
+      const a  = (i / (points * 2)) * 2 * Math.PI - Math.PI / 2;
+      if (i === 0) ctx.moveTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+      else         ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+  }
+
   // ── Hands ─────────────────────────────────────────────────────────
   _drawHands(r, h, m, s, secondAngle) {
     const ctx   = this.ctx;
@@ -474,9 +743,9 @@ class CrocodileClockDrawer {
     const hourAngle = ((h % 12 + m / 60 + s / 3600) / 12) * 2 * Math.PI - Math.PI / 2;
     const minAngle  = ((m + s / 60) / 60) * 2 * Math.PI - Math.PI / 2;
 
-    const isLuxury  = face === 'luxury';
-    const isNeon    = face === 'neon';
-    const isMinimal = face === 'minimal';
+    const isLuxury   = face === 'luxury'   || face === 'art_deco';
+    const isNeon     = face === 'neon'     || face === 'celestial';
+    const isMinimal  = face === 'minimal'  || face === 'compass';
 
     if (isNeon) {
       this._handNeon(r, hourAngle, r * 0.50, r * 0.060, hCol);
@@ -488,7 +757,7 @@ class CrocodileClockDrawer {
       this._handStick(r, hourAngle, r * 0.49, r * 0.024, r * 0.10, hCol);
       this._handStick(r, minAngle,  r * 0.69, r * 0.016, r * 0.08, mCol);
     } else {
-      // Tapered hands for classic / roman / modern / skeleton
+      // Tapered hands for classic / roman / modern / skeleton / retro / sport
       this._handTapered(r, hourAngle, r * 0.50, r * 0.052, r * 0.095, hCol);
       this._handTapered(r, minAngle,  r * 0.70, r * 0.035, r * 0.080, mCol);
     }
@@ -627,12 +896,11 @@ class CrocodileClockCard extends HTMLElement {
 
   set hass(h) {
     this._hass = h;
-    // Start clock on first hass assignment (tz now available)
+    // Start clock on first hass assignment (timezone info now available)
     if (!this._raf && this._config) this._startClock();
   }
 
   connectedCallback() {
-    // Only start if hass is already assigned (sensor.time will be available)
     if (this._config && this._hass && !this._raf) this._startClock();
   }
 
@@ -687,12 +955,6 @@ class CrocodileClockCard extends HTMLElement {
           color: rgba(255,255,255,0.50);
           letter-spacing: 0.04em;
         }
-        .cc-tap-hint {
-          font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
-          font-size: 10px;
-          color: rgba(255,255,255,0.20);
-          letter-spacing: 0.06em;
-        }
       </style>
       <ha-card>
         <div class="cc-wrap">
@@ -718,38 +980,32 @@ class CrocodileClockCard extends HTMLElement {
     this._drawer.resize(220);
 
     card.addEventListener('click', () => this._openPopup());
-    // Don't start the clock here — wait for hass to be assigned so
-    // sensor.time is available. The hass setter and connectedCallback
-    // will start it once hass is ready.
+    // Wait for hass so timezone info is available before starting the clock.
   }
 
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
+  /** Return timezone-correct h/m/s using HA's configured timezone. */
   _getTimeParts() {
-    // S and MS are timezone-independent — always safe from the browser.
     const now = new Date();
-    const s   = now.getSeconds();
     const ms  = now.getMilliseconds();
 
-    // H and M: use sensor.time exclusively (format "H:MM" or "HH:MM").
-    // HA pushes this in the server's configured timezone (Europe/London),
-    // bypassing any Date() sandboxing in the Lovelace card context.
-    const timeState = this._hass?.states?.['sensor.time']?.state;
-    if (timeState) {
-      const [hStr, mStr] = timeState.split(':');
-      const h = parseInt(hStr, 10);
-      const m = parseInt(mStr, 10);
-      if (!isNaN(h) && !isNaN(m)) return { h, m, s, ms };
-    }
+    const timezone = this._config?.timezone
+      || this._hass?.config?.time_zone
+      || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-    // Absolute fallback (should never be reached once hass is assigned)
-    return { h: now.getHours(), m: now.getMinutes(), s, ms };
+    const opts = part => ({ [part]: 'numeric', timeZone: timezone });
+    const h = parseInt(now.toLocaleString('sv-SE', opts('hour')),   10);
+    const m = parseInt(now.toLocaleString('sv-SE', opts('minute')), 10);
+    const s = parseInt(now.toLocaleString('sv-SE', opts('second')), 10);
+
+    return { h, m, s, ms };
   }
 
   _startClock() {
     const tick = () => {
-      const cfg          = this._config;
+      const cfg              = this._config;
       const { h, m, s, ms } = this._getTimeParts();
 
       let secAngle;
@@ -783,13 +1039,14 @@ class CrocodileClockCard extends HTMLElement {
         }
       }
 
-      // Update date label — prefer sensor.date, fall back to browser
+      // Update date label using timezone-aware formatting
       const dateEl = this.shadowRoot.getElementById('cc-date-el');
       if (dateEl) {
-        const dateState = this._hass?.states?.['sensor.date']?.state;
-        const d = dateState ? new Date(dateState + 'T00:00:00') : new Date();
-        dateEl.textContent = d.toLocaleDateString('en-GB', {
-          weekday: 'short', month: 'short', day: 'numeric',
+        const tz = this._config?.timezone
+          || this._hass?.config?.time_zone
+          || Intl.DateTimeFormat().resolvedOptions().timeZone;
+        dateEl.textContent = new Date().toLocaleDateString('en-GB', {
+          weekday: 'short', month: 'short', day: 'numeric', timeZone: tz,
         });
       }
 
@@ -804,7 +1061,6 @@ class CrocodileClockCard extends HTMLElement {
   _openPopup() {
     const cfg      = this._config;
     const accent   = cfg.accent_color    || '#007AFF';
-    const sColor   = cfg.second_hand_color || '#FF3B30';
     const format   = cfg.popup_format    || '12';
 
     document.getElementById('cc-popup-overlay')?.remove();
@@ -930,7 +1186,6 @@ class CrocodileClockCard extends HTMLElement {
     let timeInterval;
     const self = this;
     const updateTime = () => {
-      // Use the same authoritative source as the clock face
       const { h: _h, m: _m, s: _s } = self._getTimeParts();
       const mm  = String(_m).padStart(2, '0');
       const ss  = String(_s).padStart(2, '0');
@@ -944,10 +1199,9 @@ class CrocodileClockCard extends HTMLElement {
         timeEl.textContent = `${String(_h).padStart(2, '0')}:${mm}${sp}`;
         ampmEl.textContent = '';
       }
-      const dateState = self._hass?.states?.['sensor.date']?.state;
-      const d = dateState ? new Date(dateState + 'T00:00:00') : new Date();
-      fullDateEl.textContent = d.toLocaleDateString('en-GB', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      const tz = cfg.timezone || self._hass?.config?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      fullDateEl.textContent = new Date().toLocaleDateString('en-GB', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: tz,
       });
     };
     timeInterval = setInterval(updateTime, 500);
@@ -1102,7 +1356,6 @@ class CrocodileClockCard extends HTMLElement {
       linkIcon.setAttribute('height', '15');
       linkIcon.setAttribute('fill', 'currentColor');
       linkIcon.innerHTML = '<path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>';
-      // Shorten display label to hostname if long
       const customTitle = (cfg.popup_url_title || '').trim();
       let displayUrl = customTitle;
       if (!displayUrl) {
@@ -1288,16 +1541,16 @@ class CrocodileClockCardEditor extends HTMLElement {
           <div class="card-block">
             <div class="select-row">
               <label>URL</label>
-              <div class="hint" style="margin-bottom:8px;">Opens as a link at the bottom of the popup calendar. Leave blank to disable.</div>
+              <div class="hint" style="margin-bottom:8px;">Opens as a link at the bottom of the popup calendar. Leave blank to disable. Use <b>calshow://</b> to open the iOS Calendar app.</div>
               <input type="text" id="cc_popup_url"
-                placeholder="https://example.com"
+                placeholder="https://example.com or calshow://"
                 value="${cfg.popup_url || ''}">
             </div>
             <div class="select-row" style="margin-top:10px;">
               <label>Link Title</label>
               <div class="hint" style="margin-bottom:8px;">Custom label for the link. Falls back to the URL hostname if left blank.</div>
               <input type="text" id="cc_popup_url_title"
-                placeholder="e.g. calshow://"
+                placeholder="e.g. Open Calendar App"
                 value="${cfg.popup_url_title || ''}">
             </div>
           </div>
@@ -1447,6 +1700,6 @@ if (!window.customCards.some(c => c.type === 'crocodile-clock-card')) {
     type:        'crocodile-clock-card',
     name:        'Crocodile Clock Card',
     preview:     false,
-    description: 'Beautiful analog clock with seven faces, smooth or mechanical tick seconds, and a glassmorphic popup with digital clock and interactive calendar.',
+    description: 'Beautiful analog clock with twelve faces, smooth or mechanical tick seconds, and a glassmorphic popup with digital clock and interactive calendar.',
   });
 }
