@@ -986,21 +986,32 @@ class CrocodileClockCard extends HTMLElement {
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-  /** Return timezone-correct h/m/s using HA's configured timezone. */
+  /**
+   * Return timezone-correct h/m/s.
+   * Mirrors analogclock.js exactly: toLocaleString each part with sv-SE + timezone,
+   * then reconstruct a local Date so getHours/getMinutes/getSeconds are reliable.
+   * Uses card-configured timezone → browser timezone (same default as analogclock.js).
+   */
   _getTimeParts() {
-    const now = new Date();
-    const ms  = now.getMilliseconds();
+    let now = new Date();
+    const ms = now.getMilliseconds();
 
     const timezone = this._config?.timezone
-      || this._hass?.config?.time_zone
       || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
     const opts = part => ({ [part]: 'numeric', timeZone: timezone });
-    const h = parseInt(now.toLocaleString('sv-SE', opts('hour')),   10);
-    const m = parseInt(now.toLocaleString('sv-SE', opts('minute')), 10);
-    const s = parseInt(now.toLocaleString('sv-SE', opts('second')), 10);
+    const year   = now.toLocaleString('sv-SE', opts('year'));
+    const month  = now.toLocaleString('sv-SE', opts('month'));
+    const day    = now.toLocaleString('sv-SE', opts('day'));
+    const hour   = now.toLocaleString('sv-SE', opts('hour'));
+    const minute = now.toLocaleString('sv-SE', opts('minute'));
+    const second = now.toLocaleString('sv-SE', opts('second'));
 
-    return { h, m, s, ms };
+    // Reconstruct a local Date from timezone-adjusted components — same
+    // technique as analogclock.js — so getHours/getMinutes are unambiguous.
+    now = new Date(year, month - 1, day, hour, minute, second);
+
+    return { h: now.getHours(), m: now.getMinutes(), s: now.getSeconds(), ms };
   }
 
   _startClock() {
@@ -1043,7 +1054,6 @@ class CrocodileClockCard extends HTMLElement {
       const dateEl = this.shadowRoot.getElementById('cc-date-el');
       if (dateEl) {
         const tz = this._config?.timezone
-          || this._hass?.config?.time_zone
           || Intl.DateTimeFormat().resolvedOptions().timeZone;
         dateEl.textContent = new Date().toLocaleDateString('en-GB', {
           weekday: 'short', month: 'short', day: 'numeric', timeZone: tz,
@@ -1199,7 +1209,7 @@ class CrocodileClockCard extends HTMLElement {
         timeEl.textContent = `${String(_h).padStart(2, '0')}:${mm}${sp}`;
         ampmEl.textContent = '';
       }
-      const tz = cfg.timezone || self._hass?.config?.time_zone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const tz = cfg.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
       fullDateEl.textContent = new Date().toLocaleDateString('en-GB', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: tz,
       });
