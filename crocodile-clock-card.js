@@ -683,382 +683,268 @@ class CrocodileClockDrawer {
   //  • Single wave equation step per frame (3 sub-steps caused overshoot)
   //  • Colour mapping uses smooth tanh-like curve, never saturates
   //  • Chevrons glow red when ANY hand tip crosses their angular position
+  // ── Stargate ──────────────────────────────────────────────────────
+  // Puddle approach derived from the proven worm-weather-card technique:
+  //  • Radial gradient fills for depth (NOT pixel simulation)
+  //  • Perspective-foreshortened ellipses for the ripples (y * 0.56)
+  //  • Moving highlight blob for liquid shimmer
+  //  • Clipped ripple rings that grow and fade naturally
+  //  • No Float32Array / pixel buffer — zero strobe risk
   _faceStargate(r, accent, text, h, m, s, secondAngle) {
     const ctx = this.ctx;
     const now = Date.now();
     const T   = now / 1000;
+    const PI2 = Math.PI * 2;
     const isOnTheHour = (m === 0 && s < 8);
 
-    // ── Persistent state ─────────────────────────────────────────
-    const SIM_W = 96;
-    const SIM_N = SIM_W * SIM_W;
-    // DAMP < 0.95 is critical — waves must decay within a second
-    // so individual drops are visible as distinct ripples not a blur
-    const DAMP  = 0.920;
-
     if (!this._sg) {
-      const buf1 = new Float32Array(SIM_N);
-      const buf2 = new Float32Array(SIM_N);
-      // Circle mask
-      const mask = new Uint8Array(SIM_N);
-      const rad  = SIM_W / 2 - 1.5;
-      const cx0  = SIM_W / 2 - 0.5;
-      for (let y = 0; y < SIM_W; y++)
-        for (let x = 0; x < SIM_W; x++) {
-          const dx = x - cx0, dy = y - cx0;
-          mask[y * SIM_W + x] = (dx*dx + dy*dy < rad*rad) ? 1 : 0;
-        }
-      const oc  = document.createElement('canvas');
-      oc.width  = SIM_W; oc.height = SIM_W;
-      const oc2 = oc.getContext('2d');
       this._sg = {
-        buf1, buf2, mask,
-        offCanvas: oc, offCtx: oc2,
-        imgData:   oc2.createImageData(SIM_W, SIM_W),
-        ringRotation: 0,
-        lastFrame: now,
-        prevMinute: -1,
-        lastDrop:   0,
-        hourFlash:  -99999,
-        // chevron glow: array of { idx, born } — how long ago each was triggered
-        chevGlow:   [],
-        prevHourChev:   -1,
-        prevMinChev:    -1,
-        prevSecChev:    -1,
+        spin: 0, ripples: [], rippleTimer: 0,
+        kawoosh: null, ringRotation: 0, lastFrame: now,
+        prevMinute: -1, hourFlash: -99999,
+        chevGlow: [], prevHourChev: -1, prevMinChev: -1, prevSecChev: -1,
       };
     }
     const sg = this._sg;
 
-    // ── Delta time ───────────────────────────────────────────────
     const dt = Math.min((now - sg.lastFrame) / 1000, 0.05);
     sg.ringRotation += dt * 0.018;
+    sg.spin         += dt * 0.55;
     sg.lastFrame = now;
 
-    // ── Compute hand angles for chevron collision ─────────────────
-    const hourAngle = ((h % 12 + m / 60 + s / 3600) / 12) * 2 * Math.PI;
-    const minAngle  = ((m + s / 60) / 60) * 2 * Math.PI;
-    // secondAngle is already 0→2π (passed in from animation loop)
-    // Normalise all to 0→1 fraction of full circle
-    const hourFrac  = hourAngle / (2 * Math.PI);
-    const minFrac   = minAngle  / (2 * Math.PI);
-    const secFrac   = secondAngle !== undefined
-      ? secondAngle / (2 * Math.PI) : -1;
+    const rOuter  = r * 0.99;
+    const rPortal = r * 0.745;
+    const PERSP   = 0.56;
+    const PI2loc  = Math.PI * 2;
 
-    // Which of the 9 chevrons (0=12-o'clock, going clockwise) is each
-    // hand currently pointing at?  Chevron i spans ±(0.5/9) around i/9.
-    const fracToChev = frac => {
-      // Rotate by -0.5/9 so chevron 0 is centred on 12 (frac=0)
-      const f = ((frac + 1) % 1);
-      return Math.floor(f * 9 + 0.5) % 9;
-    };
+    // Hand angles → chevron collision
+    const hourAngle = ((h % 12 + m / 60 + s / 3600) / 12) * PI2;
+    const minAngle  = ((m + s / 60) / 60) * PI2;
+    const hourFrac  = hourAngle / PI2;
+    const minFrac   = minAngle  / PI2;
+    const secFrac   = (secondAngle !== undefined) ? secondAngle / PI2 : -1;
+    const fracToChev = f => Math.floor(((f % 1 + 1) % 1) * 9 + 0.5) % 9;
     const hChev = fracToChev(hourFrac);
     const mChev = fracToChev(minFrac);
     const sChev = secFrac >= 0 ? fracToChev(secFrac) : -1;
-
-    // Fire chevron glow on transition
     const triggerChev = idx => {
-      // Only add if not already glowing recently
-      if (!sg.chevGlow.find(g => g.idx === idx && now - g.born < 800))
+      if (!sg.chevGlow.find(g => g.idx === idx && now - g.born < 900))
         sg.chevGlow.push({ idx, born: now });
     };
     if (hChev !== sg.prevHourChev) { triggerChev(hChev); sg.prevHourChev = hChev; }
     if (mChev !== sg.prevMinChev)  { triggerChev(mChev); sg.prevMinChev  = mChev; }
     if (sChev >= 0 && sChev !== sg.prevSecChev) { triggerChev(sChev); sg.prevSecChev = sChev; }
-    // Expire old glows
-    sg.chevGlow = sg.chevGlow.filter(g => now - g.born < 1000);
+    sg.chevGlow = sg.chevGlow.filter(g => now - g.born < 1100);
 
-    // ── Disturbance sources ───────────────────────────────────────
-    // Ambient drip: small amplitude, moderate radius, random position
-    if (now - sg.lastDrop > 1400 + Math.random() * 1800) {
-      sg.lastDrop = now;
-      const ang = Math.random() * Math.PI * 2;
-      const rad2 = Math.random() * 0.48;
-      const dxd  = Math.round(SIM_W/2 + Math.cos(ang) * rad2 * (SIM_W/2 - 2));
-      const dyd  = Math.round(SIM_W/2 + Math.sin(ang) * rad2 * (SIM_W/2 - 2));
-      // Amplitude 18-28: enough to see clearly, not enough to dominate
-      const amp  = 18 + Math.random() * 10;
-      const drad = 1 + Math.floor(Math.random() * 2);
-      for (let dy2 = -drad; dy2 <= drad; dy2++)
-        for (let dx2 = -drad; dx2 <= drad; dx2++) {
-          if (dx2*dx2 + dy2*dy2 > drad*drad) continue;
-          const px = dxd+dx2, py = dyd+dy2;
-          if (px>=0&&px<SIM_W&&py>=0&&py<SIM_W) sg.buf1[py*SIM_W+px] += amp;
-        }
-    }
-
-    // Minute change → moderate central splash (NOT huge)
+    // Ripple spawning
+    sg.rippleTimer++;
+    if (sg.rippleTimer % 90 === 0) sg.ripples.push({ rx: rPortal * 0.04, op: 0.70, born: now });
     if (m !== sg.prevMinute) {
       sg.prevMinute = m;
-      // Central drop radius 4, amplitude 60 — visible but not blinding
-      const amp = 60, drad = 4;
-      for (let dy2 = -drad; dy2 <= drad; dy2++)
-        for (let dx2 = -drad; dx2 <= drad; dx2++) {
-          if (dx2*dx2+dy2*dy2 > drad*drad) continue;
-          const px = Math.round(SIM_W/2+dx2), py = Math.round(SIM_W/2+dy2);
-          if (px>=0&&px<SIM_W&&py>=0&&py<SIM_W) sg.buf1[py*SIM_W+px] += amp;
-        }
+      sg.kawoosh = { progress: 0, maxR: rPortal * 3.0 };
+      for (let i = 0; i < 4; i++) sg.ripples.push({ rx: rPortal * (0.04 + i * 0.01), op: 0.9 - i * 0.12, born: now + i * 130 });
     }
-
-    // Hour → ring disturbance
     if (isOnTheHour && now - sg.hourFlash > 12000) {
       sg.hourFlash = now;
-      const pts = 32, ringR = SIM_W * 0.28;
-      for (let i = 0; i < pts; i++) {
-        const a = (i / pts) * Math.PI * 2;
-        const px = Math.round(SIM_W/2 + Math.cos(a)*ringR);
-        const py = Math.round(SIM_W/2 + Math.sin(a)*ringR);
-        if (px>=0&&px<SIM_W&&py>=0&&py<SIM_W) sg.buf1[py*SIM_W+px] += 45;
-      }
+      sg.ripples.push({ rx: rPortal * 0.28, op: 0.90, born: now });
+      sg.ripples.push({ rx: rPortal * 0.16, op: 0.75, born: now + 200 });
     }
 
-    // ── Wave equation step ────────────────────────────────────────
-    // Single pass — multiple passes caused the resonance/strobe
-    const b1 = sg.buf1, b2 = sg.buf2, mask = sg.mask;
-    for (let y = 1; y < SIM_W-1; y++) {
-      for (let x = 1; x < SIM_W-1; x++) {
-        const i = y*SIM_W + x;
-        if (!mask[i]) { b2[i]=0; continue; }
-        const next = DAMP * (b1[i-1] + b1[i+1] + b1[i-SIM_W] + b1[i+SIM_W]) * 0.5 - b2[i];
-        b2[i] = b1[i];
-        b1[i] = (next >  80) ?  80 : (next < -80) ? -80 : next; // gentle clamp
-      }
+    const RIPPLE_SPEED = rPortal * 0.012;
+    for (let i = sg.ripples.length - 1; i >= 0; i--) {
+      if (now < sg.ripples[i].born) continue;
+      sg.ripples[i].rx += RIPPLE_SPEED;
+      sg.ripples[i].op *= 0.966;
+      if (sg.ripples[i].op < 0.03 || sg.ripples[i].rx > rPortal * 1.05) sg.ripples.splice(i, 1);
     }
-    // Swap buffers
-    sg.buf1 = b2; sg.buf2 = b1;
-
-    // ── Pixel render ─────────────────────────────────────────────
-    // Map height + surface normal → colour.
-    // The Stargate puddle palette:
-    //   Deep rest = near-black cobalt (#010810)
-    //   Wave crests = bright silver-cyan-white
-    //   Wave faces = iridescent mid-blue (normal-map reflection)
-    // We use a smooth mapping: colour ∝ tanh(h / scale)
-    // so it NEVER saturates to 100% white across the whole surface —
-    // only the very tip of each crest goes bright.
-    const pix  = sg.imgData.data;
-    const half = SIM_W / 2 - 0.5;
-    const CUR  = sg.buf1;  // after swap, buf1 is now the latest frame
-    for (let y = 0; y < SIM_W; y++) {
-      for (let x = 0; x < SIM_W; x++) {
-        const i  = y*SIM_W + x;
-        const pi = i*4;
-        if (!mask[i]) { pix[pi]=0;pix[pi+1]=0;pix[pi+2]=0;pix[pi+3]=0; continue; }
-
-        const ht = CUR[i];
-
-        // Surface normal from finite differences (for lighting)
-        const hL = mask[i-1]     ? CUR[i-1]     : ht;
-        const hR = mask[i+1]     ? CUR[i+1]     : ht;
-        const hU = mask[i-SIM_W] ? CUR[i-SIM_W] : ht;
-        const hD = mask[i+SIM_W] ? CUR[i+SIM_W] : ht;
-        const nx = (hL - hR);  // surface slope x
-        const ny = (hU - hD);  // surface slope y
-        // Light from upper-left
-        const lx = -0.5, ly = -0.4, lz = 1.0;
-        const nlen = Math.sqrt(nx*nx + ny*ny + 1.0);
-        const diffuse = Math.max(0, (nx*lx + ny*ly + lz) / nlen);
-        const spec    = Math.pow(diffuse, 12);  // sharp specular highlight
-
-        // Height contribution — smooth, never blows out
-        const SCALE = 22.0;  // tuned to amplitude 18–60
-        const hNorm = Math.tanh(ht / SCALE);  // -1 → +1, smooth
-        const crest = Math.max(0, hNorm);     // 0→1 for positive crests
-        const trough= Math.max(0, -hNorm);    // 0→1 for negative troughs
-
-        // Vignette: fade to black at portal edge
-        const dx = x - half, dy2 = y - half;
-        const dist = Math.sqrt(dx*dx + dy2*dy2) / half;
-        const vig  = Math.pow(Math.max(0, 1 - dist), 0.4);
-
-        // Base dark cobalt background (resting surface)
-        let R = 2,  G = 8,  B = 22;
-        // Add crest brightness — silver-white-cyan
-        R += crest * 200 + spec * 220;
-        G += crest * 220 + spec * 235;
-        B += crest * 255 + spec * 255;
-        // Troughs go slightly darker blue (below rest level)
-        B += trough * 30;
-        // Diffuse mid-tone — adds the cyan iridescence on wave faces
-        R += diffuse * 15;
-        G += diffuse * 55;
-        B += diffuse * 120;
-
-        // Apply vignette
-        R *= vig; G *= vig; B *= vig;
-
-        pix[pi]   = R > 255 ? 255 : R < 0 ? 0 : R;
-        pix[pi+1] = G > 255 ? 255 : G < 0 ? 0 : G;
-        pix[pi+2] = B > 255 ? 255 : B < 0 ? 0 : B;
-        pix[pi+3] = 255;
-      }
+    if (sg.kawoosh) {
+      sg.kawoosh.progress += 0.025;
+      sg.kawoosh.op = Math.max(0, 1 - sg.kawoosh.progress * 1.15);
+      if (sg.kawoosh.progress >= 1) sg.kawoosh = null;
     }
-    sg.offCtx.putImageData(sg.imgData, 0, 0);
 
-    // ═══════════════════════════════════════════════════════════════
-    // DRAW — Stone ring
-    // ═══════════════════════════════════════════════════════════════
-    const rOuter  = r * 0.99;
-    const rPortal = r * 0.74;
-
+    // ── DRAW 1: Stone ring ──────────────────────────────────────
     const stoneGrad = ctx.createRadialGradient(0, 0, rPortal, 0, 0, rOuter);
-    stoneGrad.addColorStop(0,    '#2a2d30');
-    stoneGrad.addColorStop(0.18, '#1e2124');
-    stoneGrad.addColorStop(0.55, '#2c3035');
-    stoneGrad.addColorStop(0.82, '#1a1d20');
-    stoneGrad.addColorStop(1,    '#131517');
+    stoneGrad.addColorStop(0, '#2a2d30'); stoneGrad.addColorStop(0.18, '#1e2124');
+    stoneGrad.addColorStop(0.55, '#2c3035'); stoneGrad.addColorStop(0.82, '#1a1d20');
+    stoneGrad.addColorStop(1, '#131517');
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(0,0,rOuter,0,Math.PI*2);
-    ctx.arc(0,0,rPortal,0,Math.PI*2,true);
-    ctx.fillStyle = stoneGrad;
-    ctx.fill('evenodd');
+    ctx.beginPath(); ctx.arc(0,0,rOuter,0,PI2); ctx.arc(0,0,rPortal,0,PI2,true);
+    ctx.fillStyle = stoneGrad; ctx.fill('evenodd');
     [0.78,0.82,0.86,0.90,0.935,0.965].forEach(rf => {
-      ctx.beginPath(); ctx.arc(0,0,r*rf,0,Math.PI*2);
-      ctx.strokeStyle = rf % 0.08 < 0.01 ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.25)';
-      ctx.lineWidth = 0.6; ctx.stroke();
+      ctx.beginPath(); ctx.arc(0,0,r*rf,0,PI2);
+      ctx.strokeStyle=(rf*100|0)%8<1?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.25)';
+      ctx.lineWidth=0.6; ctx.stroke();
     });
     ctx.restore();
 
-    // ═══════════════════════════════════════════════════════════════
-    // DRAW — 39 rotating glyph slots
-    // ═══════════════════════════════════════════════════════════════
-    const glyphR = r * 0.86;
+    // ── DRAW 2: Portal liquid surface ──────────────────────────
     ctx.save();
-    ctx.rotate(sg.ringRotation);
-    for (let i = 0; i < 39; i++) {
-      const a  = (i / 39) * Math.PI * 2;
-      const gx = Math.cos(a) * glyphR, gy = Math.sin(a) * glyphR;
+    ctx.beginPath(); ctx.arc(0,0,rPortal-1,0,PI2); ctx.clip();
+
+    // Deep radial gradient base
+    const dg = ctx.createRadialGradient(0, rPortal*0.10, 0, 0, 0, rPortal);
+    dg.addColorStop(0,    'rgba(25,172,255,0.96)');
+    dg.addColorStop(0.30, 'rgba(8,118,218,0.90)');
+    dg.addColorStop(0.62, 'rgba(3,68,162,0.82)');
+    dg.addColorStop(0.86, 'rgba(1,26,82,0.78)');
+    dg.addColorStop(1,    'rgba(0,7,32,0.96)');
+    ctx.fillStyle = dg; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+
+    // Edge darkening vignette
+    const vg = ctx.createRadialGradient(0,0,rPortal*0.30,0,0,rPortal);
+    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(0.68,'rgba(0,0,0,0)');
+    vg.addColorStop(1,'rgba(0,0,0,0.60)');
+    ctx.fillStyle=vg; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+
+    // Primary moving highlight blob
+    const bx = Math.cos(sg.spin * 0.70) * rPortal * 0.30;
+    const by = Math.sin(sg.spin * 0.70) * rPortal * 0.26;
+    const h1 = ctx.createRadialGradient(bx,by,0,bx,by,rPortal*0.54);
+    h1.addColorStop(0,  `rgba(175,238,255,${0.30+Math.sin(sg.spin*.3)*.06})`);
+    h1.addColorStop(0.5,'rgba(70,188,255,0.10)'); h1.addColorStop(1,'rgba(20,100,220,0)');
+    ctx.fillStyle=h1; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+
+    // Counter-orbit secondary blob
+    const bx2 = Math.cos(sg.spin * 0.43 + 2.0) * rPortal * 0.20;
+    const by2 = Math.sin(sg.spin * 0.43 + 2.0) * rPortal * 0.18;
+    const h2  = ctx.createRadialGradient(bx2,by2,0,bx2,by2,rPortal*0.30);
+    h2.addColorStop(0,`rgba(218,250,255,${0.22+Math.sin(sg.spin*.5+1)*.04})`);
+    h2.addColorStop(1,'rgba(80,178,255,0)');
+    ctx.fillStyle=h2; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+
+    // Slow-moving surface sheen strip
+    const sa = 0.055 + Math.sin(T * 0.42) * 0.025;
+    const sg2 = ctx.createLinearGradient(-rPortal,-rPortal*PERSP,rPortal,rPortal*PERSP);
+    sg2.addColorStop(0,'rgba(90,208,255,0)'); sg2.addColorStop(0.38,`rgba(155,232,255,${sa})`);
+    sg2.addColorStop(0.62,`rgba(115,218,255,${sa*0.55})`); sg2.addColorStop(1,'rgba(75,188,255,0)');
+    ctx.fillStyle=sg2; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+
+    // Ripple ellipses (perspective-foreshortened)
+    for (const rp of sg.ripples) {
+      if (now < rp.born || rp.rx <= 0 || rp.rx > rPortal + 2) continue;
+      const ry = rp.rx * PERSP;
       ctx.save();
-      ctx.translate(gx, gy); ctx.rotate(a + Math.PI/2);
-      const slotW = r*0.028, slotH = r*0.042;
-      ctx.beginPath();
-      ctx.roundRect(-slotW/2,-slotH/2,slotW,slotH,slotW*0.3);
-      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fill();
-      ctx.strokeStyle='rgba(180,200,210,0.28)'; ctx.lineWidth=0.6;
-      const seed=(i*137)%7;
-      ctx.beginPath();
-      if      (seed<2) { ctx.moveTo(-slotW*.3,-slotH*.25);ctx.lineTo(slotW*.3,-slotH*.25);ctx.moveTo(0,-slotH*.25);ctx.lineTo(0,slotH*.25); }
-      else if (seed<4) { ctx.moveTo(-slotW*.35,0);ctx.lineTo(slotW*.35,0);ctx.arc(0,0,slotW*.28,0,Math.PI*2); }
-      else if (seed<6) { ctx.moveTo(-slotW*.3,-slotH*.3);ctx.lineTo(slotW*.3,slotH*.3);ctx.moveTo(slotW*.3,-slotH*.3);ctx.lineTo(-slotW*.3,slotH*.3); }
-      else             { ctx.moveTo(0,-slotH*.35);ctx.lineTo(slotW*.3,slotH*.1);ctx.lineTo(-slotW*.3,slotH*.1);ctx.closePath(); }
-      ctx.stroke();
+      // Leading dark trough
+      ctx.beginPath(); ctx.ellipse(0,0,rp.rx*1.028,ry*1.028,0,0,PI2);
+      ctx.strokeStyle=`rgba(0,14,52,${rp.op*0.52})`; ctx.lineWidth=rPortal*0.018*(0.3+rp.op); ctx.stroke();
+      // Main bright crest
+      ctx.beginPath(); ctx.ellipse(0,0,rp.rx,ry,0,0,PI2);
+      ctx.strokeStyle=`rgba(188,238,255,${rp.op*0.92})`; ctx.lineWidth=rPortal*0.014*(0.4+rp.op*0.8);
+      ctx.shadowColor=`rgba(110,208,255,${rp.op*0.55})`; ctx.shadowBlur=4; ctx.stroke();
+      // Inner trailing glow
+      ctx.beginPath(); ctx.ellipse(0,0,rp.rx*0.958,ry*0.958,0,0,PI2);
+      ctx.strokeStyle=`rgba(72,175,255,${rp.op*0.38})`; ctx.lineWidth=rPortal*0.007; ctx.shadowBlur=0; ctx.stroke();
       ctx.restore();
+    }
+
+    // Kawoosh radial burst
+    if (sg.kawoosh) {
+      const kp = sg.kawoosh.progress, kr = sg.kawoosh.maxR * kp;
+      const kop = Math.max(0, 1 - kp * 1.18);
+      if (kr > 0.5 && kop > 0.01) {
+        ctx.save(); ctx.globalCompositeOperation='lighter';
+        const kg = ctx.createRadialGradient(0,0,kr*0.45,0,0,kr);
+        kg.addColorStop(0,'rgba(38,155,255,0)');
+        kg.addColorStop(0.55,`rgba(68,212,255,${kop*0.62})`);
+        kg.addColorStop(0.82,`rgba(158,240,255,${kop*0.85})`);
+        kg.addColorStop(1,'rgba(255,255,255,0)');
+        ctx.fillStyle=kg; ctx.beginPath(); ctx.arc(0,0,Math.min(kr,rPortal*1.5),0,PI2); ctx.fill();
+        ctx.restore();
+      }
+    }
+    ctx.restore(); // end portal clip
+
+    // ── DRAW 3: Event horizon rim ───────────────────────────────
+    ctx.save();
+    const rp2 = 0.46 + Math.sin(T * 1.3) * 0.08;
+    ctx.beginPath(); ctx.arc(0,0,rPortal+r*0.008,0,PI2);
+    ctx.strokeStyle=`rgba(52,162,255,${rp2})`; ctx.lineWidth=r*0.018;
+    ctx.shadowColor='rgba(0,135,255,0.88)'; ctx.shadowBlur=14; ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,0,rPortal-r*0.004,0,PI2);
+    ctx.strokeStyle=`rgba(175,232,255,${0.30+Math.sin(T*.85)*.07})`; ctx.lineWidth=r*0.005; ctx.shadowBlur=4; ctx.stroke();
+    ctx.restore();
+
+    // ── DRAW 4: 39 rotating glyph slots ────────────────────────
+    ctx.save(); ctx.rotate(sg.ringRotation);
+    for (let i = 0; i < 39; i++) {
+      const a = (i/39)*PI2, gx=Math.cos(a)*r*0.862, gy=Math.sin(a)*r*0.862;
+      ctx.save(); ctx.translate(gx,gy); ctx.rotate(a+Math.PI/2);
+      const sw=r*0.026, sh=r*0.040;
+      ctx.beginPath(); ctx.roundRect(-sw/2,-sh/2,sw,sh,sw*0.3);
+      ctx.fillStyle='rgba(0,0,0,0.50)'; ctx.fill();
+      ctx.strokeStyle='rgba(172,198,214,0.30)'; ctx.lineWidth=0.55;
+      const seed=(i*137)%7; ctx.beginPath();
+      if      (seed<2){ctx.moveTo(-sw*.3,-sh*.25);ctx.lineTo(sw*.3,-sh*.25);ctx.moveTo(0,-sh*.25);ctx.lineTo(0,sh*.25);}
+      else if (seed<4){ctx.moveTo(-sw*.35,0);ctx.lineTo(sw*.35,0);ctx.arc(0,0,sw*.28,0,PI2);}
+      else if (seed<6){ctx.moveTo(-sw*.3,-sh*.3);ctx.lineTo(sw*.3,sh*.3);ctx.moveTo(sw*.3,-sh*.3);ctx.lineTo(-sw*.3,sh*.3);}
+      else            {ctx.moveTo(0,-sh*.35);ctx.lineTo(sw*.3,sh*.1);ctx.lineTo(-sw*.3,sh*.1);ctx.closePath();}
+      ctx.stroke(); ctx.restore();
     }
     ctx.restore();
 
-    // ═══════════════════════════════════════════════════════════════
-    // DRAW — Nine Chevrons with hand-triggered red glow
-    // ═══════════════════════════════════════════════════════════════
-    const hourAge  = now - sg.hourFlash;
+    // ── DRAW 5: Nine chevrons ───────────────────────────────────
+    const hourAge = now - sg.hourFlash;
     for (let i = 0; i < 9; i++) {
-      const a   = (i / 9) * Math.PI*2 - Math.PI/2;
-      const cx2 = Math.cos(a) * r*0.955;
-      const cy2 = Math.sin(a) * r*0.955;
+      const a = (i/9)*PI2 - Math.PI/2;
+      const cx2=Math.cos(a)*r*0.955, cy2=Math.sin(a)*r*0.955;
+      const lockDelay=i*900;
+      const isLocked = isOnTheHour && hourAge>lockDelay && hourAge<lockDelay+8500;
+      const lockFlash= isOnTheHour && hourAge>lockDelay && hourAge<lockDelay+380;
+      const hgc    = sg.chevGlow.find(g=>g.idx===i);
+      const hAge   = hgc ? (now-hgc.born)/1100 : 1;
+      const handLit= hgc && hAge<1.0;
+      const handFade=handLit ? Math.pow(1-hAge,1.4) : 0;
+      const isRed  = isLocked||lockFlash||handLit;
 
-      // Gate-dialling lock on the hour (sequential)
-      const lockDelay = i * 900;
-      const isLocked  = isOnTheHour && hourAge > lockDelay && hourAge < lockDelay + 8500;
-      const lockFlash = isOnTheHour && hourAge > lockDelay && hourAge < lockDelay + 350;
-
-      // Hand-passing glow
-      const handGlow  = sg.chevGlow.find(g => g.idx === i);
-      const handAge   = handGlow ? (now - handGlow.born) / 1000 : 1; // 0→1 over 1 s
-      const handLit   = handGlow && handAge < 1.0;
-      // Glow fades: bright at 0, gone at 1
-      const handFade  = handLit ? Math.pow(1 - handAge, 1.5) : 0;
-
-      const litByHour = isLocked || lockFlash;
-      const isRed     = litByHour || handLit;
-
-      ctx.save();
-      ctx.translate(cx2, cy2); ctx.rotate(a + Math.PI/2);
-      const cW=r*0.088, cH=r*0.130, cW2=cW*0.5;
-
-      // Housing block
+      ctx.save(); ctx.translate(cx2,cy2); ctx.rotate(a+Math.PI/2);
+      const cW=r*0.088, cH=r*0.132, cW2=cW*0.5;
       ctx.beginPath();
       ctx.moveTo(-cW2,cH*.28); ctx.lineTo(-cW2*.72,-cH*.22);
       ctx.lineTo(-cW2*.38,-cH*.52); ctx.lineTo(cW2*.38,-cH*.52);
       ctx.lineTo(cW2*.72,-cH*.22); ctx.lineTo(cW2,cH*.28); ctx.closePath();
       const bg=ctx.createLinearGradient(-cW2,-cH*.52,cW2,cH*.28);
-      bg.addColorStop(0,'#3a3f45'); bg.addColorStop(.5,'#282c30'); bg.addColorStop(1,'#1c1f22');
+      bg.addColorStop(0,'#3d4248'); bg.addColorStop(.5,'#2a2f34'); bg.addColorStop(1,'#1e2226');
       ctx.fillStyle=bg; ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.10)'; ctx.lineWidth=0.7; ctx.stroke();
+      ctx.strokeStyle='rgba(255,255,255,0.11)'; ctx.lineWidth=0.7; ctx.stroke();
 
-      // Crystal V-shape
       const vW=cW*.70, vH=cH*.72, vW2=vW*.5;
       ctx.beginPath();
       ctx.moveTo(0,-vH*.52); ctx.lineTo(vW2,vH*.28); ctx.lineTo(vW2*.4,vH*.28);
       ctx.lineTo(0,-vH*.10); ctx.lineTo(-vW2*.4,vH*.28); ctx.lineTo(-vW2,vH*.28);
       ctx.closePath();
-
       if (isRed) {
         const rg=ctx.createLinearGradient(0,-vH*.52,0,vH*.28);
-        if (lockFlash) {
-          rg.addColorStop(0,'#FFFFFF'); rg.addColorStop(.3,'#FFAAAA'); rg.addColorStop(1,'#FF2200');
-        } else {
-          // Mix between lock-red and hand-glow-red
-          const bright = litByHour ? 1 : handFade;
-          rg.addColorStop(0, `rgba(255,${Math.round(80+bright*26)},${Math.round(bright*20)},1)`);
-          rg.addColorStop(.5,'#FF2000');
-          rg.addColorStop(1,'#CC1100');
+        if (lockFlash){rg.addColorStop(0,'#FFFFFF');rg.addColorStop(.28,'#FFBBAA');rg.addColorStop(1,'#FF2200');}
+        else {
+          const b=isLocked?1.0:handFade;
+          rg.addColorStop(0,`rgb(255,${Math.round(60+b*30)},${Math.round(b*18)})`);
+          rg.addColorStop(.5,'#EE1800'); rg.addColorStop(1,'#BB0E00');
         }
         ctx.fillStyle=rg;
-        const glowStr = lockFlash ? 28 : (litByHour ? 20 : handFade * 22);
-        ctx.shadowColor='rgba(255,30,0,0.95)'; ctx.shadowBlur=glowStr;
+        ctx.shadowColor=lockFlash?'rgba(255,220,200,1)':'rgba(255,20,0,0.95)';
+        ctx.shadowBlur=lockFlash?30:(isLocked?22:handFade*24);
       } else {
         const ug=ctx.createLinearGradient(0,-vH*.52,0,vH*.28);
-        ug.addColorStop(0,'#4a4030'); ug.addColorStop(.5,'#2e2818'); ug.addColorStop(1,'#1a1408');
+        ug.addColorStop(0,'#4a4032'); ug.addColorStop(.5,'#302818'); ug.addColorStop(1,'#1c1508');
         ctx.fillStyle=ug; ctx.shadowBlur=0;
       }
       ctx.fill();
-
-      // Specular highlight
       ctx.beginPath();
-      ctx.moveTo(-vW2*.25,-vH*.45); ctx.lineTo(vW2*.15,-vH*.10);
-      ctx.lineTo(vW2*.05,-vH*.10);  ctx.lineTo(-vW2*.32,-vH*.45);
-      ctx.closePath();
-      ctx.fillStyle = isRed ? `rgba(255,200,180,${lockFlash?0.55:handFade*0.45})` : 'rgba(255,255,200,0.12)';
+      ctx.moveTo(-vW2*.25,-vH*.44); ctx.lineTo(vW2*.14,-vH*.10);
+      ctx.lineTo(vW2*.05,-vH*.10); ctx.lineTo(-vW2*.30,-vH*.44); ctx.closePath();
+      ctx.fillStyle=isRed?`rgba(255,210,190,${lockFlash?0.55:handFade*0.48})`:'rgba(255,255,210,0.11)';
       ctx.shadowBlur=0; ctx.fill();
       ctx.restore();
     }
 
-    // ═══════════════════════════════════════════════════════════════
-    // DRAW — Blit fluid simulation into portal opening
-    // ═══════════════════════════════════════════════════════════════
-    const pd = rPortal * 2;
+    // ── DRAW 6: Outer metallic bezel ────────────────────────────
     ctx.save();
-    ctx.beginPath(); ctx.arc(0,0,rPortal,0,Math.PI*2); ctx.clip();
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(sg.offCanvas, -rPortal, -rPortal, pd, pd);
-
-    // Subtle centre glow (small, doesn't wash out the ripples)
-    const cp = Math.sin(T * 1.1) * 0.5 + 0.5;
-    const cg = ctx.createRadialGradient(0,0,0,0,0,rPortal*0.22);
-    cg.addColorStop(0,   `rgba(200,240,255,${0.35 + cp*0.15})`);
-    cg.addColorStop(0.4, `rgba(80,160,255,0.10)`);
-    cg.addColorStop(1,   'rgba(0,20,80,0)');
-    ctx.fillStyle=cg; ctx.fillRect(-rPortal,-rPortal,pd,pd);
-    ctx.restore();
-
-    // ═══════════════════════════════════════════════════════════════
-    // DRAW — Event horizon rim glow
-    // ═══════════════════════════════════════════════════════════════
-    ctx.save();
-    ctx.beginPath(); ctx.arc(0,0,rPortal+r*0.010,0,Math.PI*2);
-    ctx.strokeStyle=`rgba(60,160,255,${0.50+Math.sin(T*1.4)*0.10})`;
-    ctx.lineWidth=r*0.018; ctx.shadowColor='rgba(0,140,255,0.85)'; ctx.shadowBlur=14;
-    ctx.stroke();
-    ctx.beginPath(); ctx.arc(0,0,rPortal-r*0.005,0,Math.PI*2);
-    ctx.strokeStyle=`rgba(180,230,255,${0.35+Math.sin(T*0.9)*0.08})`;
-    ctx.lineWidth=r*0.006; ctx.shadowBlur=6; ctx.stroke();
-
-    // Outer bezel
-    ctx.beginPath(); ctx.arc(0,0,rOuter-1,0,Math.PI*2);
+    ctx.beginPath(); ctx.arc(0,0,rOuter-1,0,PI2);
     const bz=ctx.createLinearGradient(-rOuter,-rOuter,rOuter,rOuter);
-    bz.addColorStop(0,'rgba(200,210,220,0.20)'); bz.addColorStop(.5,'rgba(200,210,220,0.16)');
-    bz.addColorStop(1,'rgba(180,190,200,0.18)');
-    ctx.strokeStyle=bz; ctx.lineWidth=1.5; ctx.shadowBlur=0; ctx.stroke();
+    bz.addColorStop(0,'rgba(210,220,230,0.20)'); bz.addColorStop(.5,'rgba(200,212,224,0.14)');
+    bz.addColorStop(1,'rgba(185,195,208,0.18)');
+    ctx.strokeStyle=bz; ctx.lineWidth=1.5; ctx.stroke();
     ctx.restore();
   }
   // ── Hands ─────────────────────────────────────────────────────────
