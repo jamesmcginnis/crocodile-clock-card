@@ -8,7 +8,7 @@
  * Author:     James McGinnis
  */
 
-const CC_VERSION = '1.8.0';
+const CC_VERSION = '1.9.0';
 
 // ── Canvas roundRect polyfill ─────────────────────────────────────
 (function () {
@@ -753,20 +753,14 @@ class CrocodileClockCard extends HTMLElement {
       const now = new Date();
       const cfg = this._config;
 
-      // ── Read local time from sensor.time ("HH:MM") ──────────────────
-      // sensor.time is the HA Time & Date integration — always local time.
-      // s and ms come from the browser (timezone-independent sub-minute precision).
-      let h, m;
-      const timeState = this._hass?.states?.['sensor.time']?.state;
-      if (timeState && timeState.includes(':')) {
-        const tp = timeState.split(':');
-        h = parseInt(tp[0], 10);
-        m = parseInt(tp[1], 10);
-      } else {
-        h = now.getHours();
-        m = now.getMinutes();
-      }
-      const s  = now.getSeconds();
+      // ── Read local time via toLocaleTimeString (always browser-local) ──
+      // Using toLocaleTimeString with hour12:false forces the JS engine to
+      // apply the local timezone, matching what the popup displays.
+      const localTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      const tp = localTime.split(':');
+      const h  = parseInt(tp[0], 10) % 24;
+      const m  = parseInt(tp[1], 10);
+      const s  = parseInt(tp[2], 10);
       const ms = now.getMilliseconds();
 
       let secAngle;
@@ -948,18 +942,12 @@ class CrocodileClockCard extends HTMLElement {
     const self = this;
     const updateTime = () => {
       const _now = new Date();
-      let _h, _m;
-      const _ts = self._hass?.states?.['sensor.time']?.state;
-      if (_ts && _ts.includes(':')) {
-        const _tp = _ts.split(':');
-        _h = parseInt(_tp[0], 10);
-        _m = parseInt(_tp[1], 10);
-      } else {
-        _h = _now.getHours();
-        _m = _now.getMinutes();
-      }
-      const _s  = _now.getSeconds();
-      let   hh  = _h;
+      const _lt  = _now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+      const _tp  = _lt.split(':');
+      const _h   = parseInt(_tp[0], 10) % 24;
+      const _m   = parseInt(_tp[1], 10);
+      const _s   = parseInt(_tp[2], 10);
+      let   hh   = _h;
       const mm  = String(_m).padStart(2, '0');
       const ss  = String(_s).padStart(2, '0');
       const sp  = cfg.show_seconds ? `:${ss}` : '';
