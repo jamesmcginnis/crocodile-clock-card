@@ -181,14 +181,14 @@ class CrocodileClockDrawer {
     ctx.scale(dpr, dpr);
     ctx.translate(r, r);
 
-    this._drawFace(r, h, m, s);
+    this._drawFace(r, h, m, s, secondAngle);
     this._drawHands(r, h, m, s, secondAngle);
 
     ctx.restore();
   }
 
   // ── Face ─────────────────────────────────────────────────────────
-  _drawFace(r, h, m, s) {
+  _drawFace(r, h, m, s, secondAngle) {
     const ctx   = this.ctx;
     const cfg   = this._config;
     const face  = cfg.face || 'classic';
@@ -231,7 +231,7 @@ class CrocodileClockDrawer {
       case 'sport':     this._faceSport(r, accent, text);     break;
       case 'art_deco':  this._faceArtDeco(r, accent, text);   break;
       case 'celestial': this._faceCelestial(r, accent, text); break;
-      case 'stargate':  this._faceStargate(r, accent, text, h, m, s); break;
+      case 'stargate':  this._faceStargate(r, accent, text, h, m, s, secondAngle); break;
       default:          this._faceClassic(r, accent, text);   break;
     }
   }
@@ -675,224 +675,231 @@ class CrocodileClockDrawer {
   }
 
   // ── Stargate ──────────────────────────────────────────────────────
-  _faceStargate(r, accent, text, h, m, s) {
+  // ── Stargate ──────────────────────────────────────────────────────
+  // Fluid ripple-tank simulation with per-pixel normal-map shading.
+  // Key tuning notes vs previous version:
+  //  • DAMP = 0.920  → waves die in ~0.8 s; NO resonance/strobe
+  //  • Drop amplitude = 18–25 (not 900!) → gentle splash, not explosion
+  //  • Single wave equation step per frame (3 sub-steps caused overshoot)
+  //  • Colour mapping uses smooth tanh-like curve, never saturates
+  //  • Chevrons glow red when ANY hand tip crosses their angular position
+  _faceStargate(r, accent, text, h, m, s, secondAngle) {
     const ctx = this.ctx;
     const now = Date.now();
     const T   = now / 1000;
-    const isOnTheHour = (m === 0 && s < 10);
+    const isOnTheHour = (m === 0 && s < 8);
 
-    // ── Fluid simulation grid ─────────────────────────────────────
-    // We maintain a 2D height-field (SIM_W × SIM_W) that is stepped
-    // each frame using the classic "ripple tank" wave equation:
-    //   new[x,y] = damping * (buf1[x-1,y]+buf1[x+1,y]+buf1[x,y-1]+buf1[x,y+1])/2 - buf2[x,y]
-    // This produces physically correct wave propagation with natural
-    // dispersion and interference — exactly what the Stargate puddle looks like.
-
-    const SIM_W = 80; // grid resolution (80×80 is fast and smooth enough)
+    // ── Persistent state ─────────────────────────────────────────
+    const SIM_W = 96;
     const SIM_N = SIM_W * SIM_W;
-    const DAMP  = 0.985; // damping (higher = longer-lived waves)
+    // DAMP < 0.95 is critical — waves must decay within a second
+    // so individual drops are visible as distinct ripples not a blur
+    const DAMP  = 0.920;
 
     if (!this._sg) {
-      this._sg = {
-        buf1:        new Float32Array(SIM_N), // current frame heights
-        buf2:        new Float32Array(SIM_N), // previous frame heights
-        imgData:     null,  // reused ImageData
-        offCanvas:   null,  // offscreen canvas for pixel compositing
-        offCtx:      null,
-        ringRotation: 0,
-        lastFrame:   now,
-        prevMinute:  -1,
-        hourFlash:   -99999,
-        lastDrop:    0,
-        dropQueue:   [],    // { cx, cy, amp, radius }
-      };
-      // Pre-calculate circle mask (which grid cells are inside the portal)
+      const buf1 = new Float32Array(SIM_N);
+      const buf2 = new Float32Array(SIM_N);
+      // Circle mask
       const mask = new Uint8Array(SIM_N);
-      const half = SIM_W / 2 - 1;
-      for (let y = 0; y < SIM_W; y++) {
+      const rad  = SIM_W / 2 - 1.5;
+      const cx0  = SIM_W / 2 - 0.5;
+      for (let y = 0; y < SIM_W; y++)
         for (let x = 0; x < SIM_W; x++) {
-          const dx = x - SIM_W / 2 + 0.5, dy = y - SIM_W / 2 + 0.5;
-          mask[y * SIM_W + x] = (Math.sqrt(dx*dx + dy*dy) < half) ? 1 : 0;
+          const dx = x - cx0, dy = y - cx0;
+          mask[y * SIM_W + x] = (dx*dx + dy*dy < rad*rad) ? 1 : 0;
         }
-      }
-      this._sg.mask = mask;
-
-      // Offscreen canvas for pixel-level portal rendering
-      const oc = document.createElement('canvas');
-      oc.width  = SIM_W;
-      oc.height = SIM_W;
-      this._sg.offCanvas = oc;
-      this._sg.offCtx    = oc.getContext('2d');
-      this._sg.imgData   = this._sg.offCtx.createImageData(SIM_W, SIM_W);
+      const oc  = document.createElement('canvas');
+      oc.width  = SIM_W; oc.height = SIM_W;
+      const oc2 = oc.getContext('2d');
+      this._sg = {
+        buf1, buf2, mask,
+        offCanvas: oc, offCtx: oc2,
+        imgData:   oc2.createImageData(SIM_W, SIM_W),
+        ringRotation: 0,
+        lastFrame: now,
+        prevMinute: -1,
+        lastDrop:   0,
+        hourFlash:  -99999,
+        // chevron glow: array of { idx, born } — how long ago each was triggered
+        chevGlow:   [],
+        prevHourChev:   -1,
+        prevMinChev:    -1,
+        prevSecChev:    -1,
+      };
     }
     const sg = this._sg;
 
-    // ── Time step ─────────────────────────────────────────────────
+    // ── Delta time ───────────────────────────────────────────────
     const dt = Math.min((now - sg.lastFrame) / 1000, 0.05);
     sg.ringRotation += dt * 0.018;
     sg.lastFrame = now;
 
+    // ── Compute hand angles for chevron collision ─────────────────
+    const hourAngle = ((h % 12 + m / 60 + s / 3600) / 12) * 2 * Math.PI;
+    const minAngle  = ((m + s / 60) / 60) * 2 * Math.PI;
+    // secondAngle is already 0→2π (passed in from animation loop)
+    // Normalise all to 0→1 fraction of full circle
+    const hourFrac  = hourAngle / (2 * Math.PI);
+    const minFrac   = minAngle  / (2 * Math.PI);
+    const secFrac   = secondAngle !== undefined
+      ? secondAngle / (2 * Math.PI) : -1;
+
+    // Which of the 9 chevrons (0=12-o'clock, going clockwise) is each
+    // hand currently pointing at?  Chevron i spans ±(0.5/9) around i/9.
+    const fracToChev = frac => {
+      // Rotate by -0.5/9 so chevron 0 is centred on 12 (frac=0)
+      const f = ((frac + 1) % 1);
+      return Math.floor(f * 9 + 0.5) % 9;
+    };
+    const hChev = fracToChev(hourFrac);
+    const mChev = fracToChev(minFrac);
+    const sChev = secFrac >= 0 ? fracToChev(secFrac) : -1;
+
+    // Fire chevron glow on transition
+    const triggerChev = idx => {
+      // Only add if not already glowing recently
+      if (!sg.chevGlow.find(g => g.idx === idx && now - g.born < 800))
+        sg.chevGlow.push({ idx, born: now });
+    };
+    if (hChev !== sg.prevHourChev) { triggerChev(hChev); sg.prevHourChev = hChev; }
+    if (mChev !== sg.prevMinChev)  { triggerChev(mChev); sg.prevMinChev  = mChev; }
+    if (sChev >= 0 && sChev !== sg.prevSecChev) { triggerChev(sChev); sg.prevSecChev = sChev; }
+    // Expire old glows
+    sg.chevGlow = sg.chevGlow.filter(g => now - g.born < 1000);
+
     // ── Disturbance sources ───────────────────────────────────────
-    // 1. Continuous ambient drips — random small drops every 1.2–2.8 s
-    if (now - sg.lastDrop > 1200 + Math.random() * 1600) {
+    // Ambient drip: small amplitude, moderate radius, random position
+    if (now - sg.lastDrop > 1400 + Math.random() * 1800) {
       sg.lastDrop = now;
-      // Random position within 55% of portal radius (centre region)
       const ang = Math.random() * Math.PI * 2;
-      const rad = Math.random() * 0.50;
-      sg.dropQueue.push({
-        cx: Math.round(SIM_W/2 + Math.cos(ang) * rad * SIM_W/2),
-        cy: Math.round(SIM_W/2 + Math.sin(ang) * rad * SIM_W/2),
-        amp: 180 + Math.random() * 120,
-        radius: 1 + Math.floor(Math.random() * 2),
-      });
+      const rad2 = Math.random() * 0.48;
+      const dxd  = Math.round(SIM_W/2 + Math.cos(ang) * rad2 * (SIM_W/2 - 2));
+      const dyd  = Math.round(SIM_W/2 + Math.sin(ang) * rad2 * (SIM_W/2 - 2));
+      // Amplitude 18-28: enough to see clearly, not enough to dominate
+      const amp  = 18 + Math.random() * 10;
+      const drad = 1 + Math.floor(Math.random() * 2);
+      for (let dy2 = -drad; dy2 <= drad; dy2++)
+        for (let dx2 = -drad; dx2 <= drad; dx2++) {
+          if (dx2*dx2 + dy2*dy2 > drad*drad) continue;
+          const px = dxd+dx2, py = dyd+dy2;
+          if (px>=0&&px<SIM_W&&py>=0&&py<SIM_W) sg.buf1[py*SIM_W+px] += amp;
+        }
     }
 
-    // 2. Minute change → big kawoosh burst from centre
+    // Minute change → moderate central splash (NOT huge)
     if (m !== sg.prevMinute) {
       sg.prevMinute = m;
-      // Large central disturbance — simulates the kawoosh eruption
-      sg.dropQueue.push({ cx: SIM_W/2, cy: SIM_W/2, amp: 900, radius: 5 });
-      // A few offset splashes around it
-      for (let i = 0; i < 4; i++) {
-        const a = (i / 4) * Math.PI * 2;
-        sg.dropQueue.push({
-          cx: Math.round(SIM_W/2 + Math.cos(a) * 4),
-          cy: Math.round(SIM_W/2 + Math.sin(a) * 4),
-          amp: 600, radius: 3,
-        });
-      }
+      // Central drop radius 4, amplitude 60 — visible but not blinding
+      const amp = 60, drad = 4;
+      for (let dy2 = -drad; dy2 <= drad; dy2++)
+        for (let dx2 = -drad; dx2 <= drad; dx2++) {
+          if (dx2*dx2+dy2*dy2 > drad*drad) continue;
+          const px = Math.round(SIM_W/2+dx2), py = Math.round(SIM_W/2+dy2);
+          if (px>=0&&px<SIM_W&&py>=0&&py<SIM_W) sg.buf1[py*SIM_W+px] += amp;
+        }
     }
 
-    // 3. Hour → full-gate energy surge
-    if (isOnTheHour && now - sg.hourFlash > 15000) {
+    // Hour → ring disturbance
+    if (isOnTheHour && now - sg.hourFlash > 12000) {
       sg.hourFlash = now;
-      // Ring-shaped disturbance at 60% radius — like the kawoosh wave hitting the ring
-      const pts = 48;
+      const pts = 32, ringR = SIM_W * 0.28;
       for (let i = 0; i < pts; i++) {
         const a = (i / pts) * Math.PI * 2;
-        sg.dropQueue.push({
-          cx: Math.round(SIM_W/2 + Math.cos(a) * SIM_W * 0.30),
-          cy: Math.round(SIM_W/2 + Math.sin(a) * SIM_W * 0.30),
-          amp: 700, radius: 2,
-        });
+        const px = Math.round(SIM_W/2 + Math.cos(a)*ringR);
+        const py = Math.round(SIM_W/2 + Math.sin(a)*ringR);
+        if (px>=0&&px<SIM_W&&py>=0&&py<SIM_W) sg.buf1[py*SIM_W+px] += 45;
       }
     }
 
-    // ── Apply pending disturbances into buf1 ──────────────────────
-    sg.dropQueue.forEach(d => {
-      for (let dy = -d.radius; dy <= d.radius; dy++) {
-        for (let dx = -d.radius; dx <= d.radius; dx++) {
-          if (dx*dx + dy*dy > d.radius*d.radius) continue;
-          const px = Math.round(d.cx + dx), py = Math.round(d.cy + dy);
-          if (px >= 0 && px < SIM_W && py >= 0 && py < SIM_W) {
-            sg.buf1[py * SIM_W + px] += d.amp;
-          }
-        }
-      }
-    });
-    sg.dropQueue = [];
-
-    // ── Step the wave simulation ──────────────────────────────────
-    // Run multiple sub-steps per frame for stability & richness
-    const STEPS = 3;
+    // ── Wave equation step ────────────────────────────────────────
+    // Single pass — multiple passes caused the resonance/strobe
     const b1 = sg.buf1, b2 = sg.buf2, mask = sg.mask;
-    for (let step = 0; step < STEPS; step++) {
-      for (let y = 1; y < SIM_W - 1; y++) {
-        for (let x = 1; x < SIM_W - 1; x++) {
-          const i = y * SIM_W + x;
-          if (!mask[i]) continue;
-          // Wave equation: average of 4 neighbours × 2, minus previous, damped
-          const next = DAMP * (
-            (b1[i-1] + b1[i+1] + b1[i-SIM_W] + b1[i+SIM_W]) * 0.5
-          ) - b2[i];
-          b2[i] = b1[i];
-          b1[i] = next;
-          // Hard clamp to prevent blow-up
-          if (b1[i] >  1000) b1[i] =  1000;
-          if (b1[i] < -1000) b1[i] = -1000;
-        }
+    for (let y = 1; y < SIM_W-1; y++) {
+      for (let x = 1; x < SIM_W-1; x++) {
+        const i = y*SIM_W + x;
+        if (!mask[i]) { b2[i]=0; continue; }
+        const next = DAMP * (b1[i-1] + b1[i+1] + b1[i-SIM_W] + b1[i+SIM_W]) * 0.5 - b2[i];
+        b2[i] = b1[i];
+        b1[i] = (next >  80) ?  80 : (next < -80) ? -80 : next; // gentle clamp
       }
     }
+    // Swap buffers
+    sg.buf1 = b2; sg.buf2 = b1;
 
-    // ── Render height field to pixel colours ─────────────────────
-    // Colour mapping: height → iridescent blue-silver-white
-    // Positive height (wave crest) → bright silver/white
-    // Zero (trough) → deep dark blue-black
-    // Negative (wave valley) → mid-blue with slight cyan
-    //
-    // Additionally apply a fake "normal map" reflection:
-    // compare height to neighbours → derive surface normal → use to
-    // modulate brightness (simulates light glinting off wave faces)
-    const pix = sg.imgData.data;
-    const half = SIM_W / 2;
+    // ── Pixel render ─────────────────────────────────────────────
+    // Map height + surface normal → colour.
+    // The Stargate puddle palette:
+    //   Deep rest = near-black cobalt (#010810)
+    //   Wave crests = bright silver-cyan-white
+    //   Wave faces = iridescent mid-blue (normal-map reflection)
+    // We use a smooth mapping: colour ∝ tanh(h / scale)
+    // so it NEVER saturates to 100% white across the whole surface —
+    // only the very tip of each crest goes bright.
+    const pix  = sg.imgData.data;
+    const half = SIM_W / 2 - 0.5;
+    const CUR  = sg.buf1;  // after swap, buf1 is now the latest frame
     for (let y = 0; y < SIM_W; y++) {
       for (let x = 0; x < SIM_W; x++) {
-        const i  = y * SIM_W + x;
-        const pi = i * 4;
-        const dx = x - half + 0.5, dy = y - half + 0.5;
-        const distNorm = Math.sqrt(dx*dx + dy*dy) / half; // 0 at centre, 1 at edge
+        const i  = y*SIM_W + x;
+        const pi = i*4;
+        if (!mask[i]) { pix[pi]=0;pix[pi+1]=0;pix[pi+2]=0;pix[pi+3]=0; continue; }
 
-        if (!mask[i]) {
-          pix[pi]=0; pix[pi+1]=0; pix[pi+2]=0; pix[pi+3]=0;
-          continue;
-        }
+        const ht = CUR[i];
 
-        const h = b1[i];
+        // Surface normal from finite differences (for lighting)
+        const hL = mask[i-1]     ? CUR[i-1]     : ht;
+        const hR = mask[i+1]     ? CUR[i+1]     : ht;
+        const hU = mask[i-SIM_W] ? CUR[i-SIM_W] : ht;
+        const hD = mask[i+SIM_W] ? CUR[i+SIM_W] : ht;
+        const nx = (hL - hR);  // surface slope x
+        const ny = (hU - hD);  // surface slope y
+        // Light from upper-left
+        const lx = -0.5, ly = -0.4, lz = 1.0;
+        const nlen = Math.sqrt(nx*nx + ny*ny + 1.0);
+        const diffuse = Math.max(0, (nx*lx + ny*ly + lz) / nlen);
+        const spec    = Math.pow(diffuse, 12);  // sharp specular highlight
 
-        // Normal map from height gradient
-        const hL = (x > 0           && mask[i-1])      ? b1[i-1]      : h;
-        const hR = (x < SIM_W-1     && mask[i+1])      ? b1[i+1]      : h;
-        const hU = (y > 0           && mask[i-SIM_W])  ? b1[i-SIM_W]  : h;
-        const hD = (y < SIM_W-1     && mask[i+SIM_W])  ? b1[i+SIM_W]  : h;
-        // Surface gradient (slope)
-        const nx = (hL - hR) * 0.5;  // +x = slope left
-        const ny = (hU - hD) * 0.5;  // +y = slope up
-        // Light direction: upper-left, slight depth
-        const lx = -0.6, ly = -0.5, lz = 0.8;
-        const len = Math.sqrt(nx*nx + ny*ny + 1);
-        const dot = Math.max(0, (nx*lx + ny*ly + lz) / len); // Lambertian
+        // Height contribution — smooth, never blows out
+        const SCALE = 22.0;  // tuned to amplitude 18–60
+        const hNorm = Math.tanh(ht / SCALE);  // -1 → +1, smooth
+        const crest = Math.max(0, hNorm);     // 0→1 for positive crests
+        const trough= Math.max(0, -hNorm);    // 0→1 for negative troughs
 
-        // Base colour: deep blue-black void
-        // Height modulates: crests are silver-white, valleys are dark blue
-        const normH  = Math.max(-1, Math.min(1, h / 280));  // -1 to +1
-        // Crest brightness — goes bright white at positive peaks
-        const crest  = Math.max(0, normH);         // 0→1 for positive heights
-        const valley = Math.max(0, -normH) * 0.4;  // 0→0.4 for negative depths
+        // Vignette: fade to black at portal edge
+        const dx = x - half, dy2 = y - half;
+        const dist = Math.sqrt(dx*dx + dy2*dy2) / half;
+        const vig  = Math.pow(Math.max(0, 1 - dist), 0.4);
 
-        // Edge vignette — darker at edge of portal
-        const vignette = Math.pow(1 - distNorm, 0.35);
+        // Base dark cobalt background (resting surface)
+        let R = 2,  G = 8,  B = 22;
+        // Add crest brightness — silver-white-cyan
+        R += crest * 200 + spec * 220;
+        G += crest * 220 + spec * 235;
+        B += crest * 255 + spec * 255;
+        // Troughs go slightly darker blue (below rest level)
+        B += trough * 30;
+        // Diffuse mid-tone — adds the cyan iridescence on wave faces
+        R += diffuse * 15;
+        G += diffuse * 55;
+        B += diffuse * 120;
 
-        // Final colour channels
-        // R: barely any red in the mid-tones (it's blue); crests get white (all channels)
-        // G: mid-blue range, some green in the cyan highlights
-        // B: dominant channel
-        const specular = Math.pow(dot, 4) * 0.6;  // specular highlight
-        const diffuse  = dot * 0.3;
+        // Apply vignette
+        R *= vig; G *= vig; B *= vig;
 
-        let R = (crest * 210 + specular * 255 + valley * 10  + 5)  * vignette;
-        let G = (crest * 230 + specular * 245 + valley * 25  + 20) * vignette;
-        let B = (crest * 255 + specular * 255 + valley * 60  + 55  + diffuse * 140) * vignette;
-
-        // Iridescent shimmer: add a subtle colour-shift based on wave slope direction
-        const shimmer = Math.sin(nx * 0.08 + T * 1.1) * 12;
-        G += shimmer * crest * vignette;
-        B += shimmer * 0.5 * vignette;
-
-        pix[pi]   = Math.min(255, Math.max(0, R));
-        pix[pi+1] = Math.min(255, Math.max(0, G));
-        pix[pi+2] = Math.min(255, Math.max(0, B));
+        pix[pi]   = R > 255 ? 255 : R < 0 ? 0 : R;
+        pix[pi+1] = G > 255 ? 255 : G < 0 ? 0 : G;
+        pix[pi+2] = B > 255 ? 255 : B < 0 ? 0 : B;
         pix[pi+3] = 255;
       }
     }
     sg.offCtx.putImageData(sg.imgData, 0, 0);
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 1 — Solid stone ring face (Abydos DHD-style)
+    // DRAW — Stone ring
     // ═══════════════════════════════════════════════════════════════
     const rOuter  = r * 0.99;
-    const rPortal = r * 0.74; // portal opening
+    const rPortal = r * 0.74;
 
-    // Stone ring — dark granite gradient
     const stoneGrad = ctx.createRadialGradient(0, 0, rPortal, 0, 0, rOuter);
     stoneGrad.addColorStop(0,    '#2a2d30');
     stoneGrad.addColorStop(0.18, '#1e2124');
@@ -901,166 +908,159 @@ class CrocodileClockDrawer {
     stoneGrad.addColorStop(1,    '#131517');
     ctx.save();
     ctx.beginPath();
-    ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
-    ctx.arc(0, 0, rPortal, 0, Math.PI * 2, true);
+    ctx.arc(0,0,rOuter,0,Math.PI*2);
+    ctx.arc(0,0,rPortal,0,Math.PI*2,true);
     ctx.fillStyle = stoneGrad;
     ctx.fill('evenodd');
-    // Concentric groove texture
-    [0.78, 0.82, 0.86, 0.90, 0.935, 0.965].forEach(rf => {
-      ctx.beginPath(); ctx.arc(0, 0, r * rf, 0, Math.PI * 2);
+    [0.78,0.82,0.86,0.90,0.935,0.965].forEach(rf => {
+      ctx.beginPath(); ctx.arc(0,0,r*rf,0,Math.PI*2);
       ctx.strokeStyle = rf % 0.08 < 0.01 ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.25)';
       ctx.lineWidth = 0.6; ctx.stroke();
     });
     ctx.restore();
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 2 — 39 Glyph symbol slots (slowly rotating ring)
+    // DRAW — 39 rotating glyph slots
     // ═══════════════════════════════════════════════════════════════
-    const GLYPHS = 39;
     const glyphR = r * 0.86;
     ctx.save();
     ctx.rotate(sg.ringRotation);
-    for (let i = 0; i < GLYPHS; i++) {
-      const a  = (i / GLYPHS) * Math.PI * 2;
-      const gx = Math.cos(a) * glyphR;
-      const gy = Math.sin(a) * glyphR;
+    for (let i = 0; i < 39; i++) {
+      const a  = (i / 39) * Math.PI * 2;
+      const gx = Math.cos(a) * glyphR, gy = Math.sin(a) * glyphR;
       ctx.save();
-      ctx.translate(gx, gy);
-      ctx.rotate(a + Math.PI / 2);
-      const slotW = r * 0.028, slotH = r * 0.042;
+      ctx.translate(gx, gy); ctx.rotate(a + Math.PI/2);
+      const slotW = r*0.028, slotH = r*0.042;
       ctx.beginPath();
-      ctx.roundRect(-slotW/2, -slotH/2, slotW, slotH, slotW * 0.3);
-      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
-      ctx.strokeStyle = 'rgba(180,200,210,0.28)'; ctx.lineWidth = 0.6;
-      const seed = (i * 137) % 7;
+      ctx.roundRect(-slotW/2,-slotH/2,slotW,slotH,slotW*0.3);
+      ctx.fillStyle='rgba(0,0,0,0.55)'; ctx.fill();
+      ctx.strokeStyle='rgba(180,200,210,0.28)'; ctx.lineWidth=0.6;
+      const seed=(i*137)%7;
       ctx.beginPath();
-      if (seed < 2) {
-        ctx.moveTo(-slotW*0.3,-slotH*0.25); ctx.lineTo(slotW*0.3,-slotH*0.25);
-        ctx.moveTo(0,-slotH*0.25); ctx.lineTo(0,slotH*0.25);
-      } else if (seed < 4) {
-        ctx.moveTo(-slotW*0.35,0); ctx.lineTo(slotW*0.35,0);
-        ctx.arc(0,0,slotW*0.28,0,Math.PI*2);
-      } else if (seed < 6) {
-        ctx.moveTo(-slotW*0.3,-slotH*0.3); ctx.lineTo(slotW*0.3,slotH*0.3);
-        ctx.moveTo(slotW*0.3,-slotH*0.3); ctx.lineTo(-slotW*0.3,slotH*0.3);
-      } else {
-        ctx.moveTo(0,-slotH*0.35); ctx.lineTo(slotW*0.3,slotH*0.1);
-        ctx.lineTo(-slotW*0.3,slotH*0.1); ctx.closePath();
-      }
+      if      (seed<2) { ctx.moveTo(-slotW*.3,-slotH*.25);ctx.lineTo(slotW*.3,-slotH*.25);ctx.moveTo(0,-slotH*.25);ctx.lineTo(0,slotH*.25); }
+      else if (seed<4) { ctx.moveTo(-slotW*.35,0);ctx.lineTo(slotW*.35,0);ctx.arc(0,0,slotW*.28,0,Math.PI*2); }
+      else if (seed<6) { ctx.moveTo(-slotW*.3,-slotH*.3);ctx.lineTo(slotW*.3,slotH*.3);ctx.moveTo(slotW*.3,-slotH*.3);ctx.lineTo(-slotW*.3,slotH*.3); }
+      else             { ctx.moveTo(0,-slotH*.35);ctx.lineTo(slotW*.3,slotH*.1);ctx.lineTo(-slotW*.3,slotH*.1);ctx.closePath(); }
       ctx.stroke();
       ctx.restore();
     }
     ctx.restore();
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 3 — Nine Chevrons
+    // DRAW — Nine Chevrons with hand-triggered red glow
     // ═══════════════════════════════════════════════════════════════
     const hourAge  = now - sg.hourFlash;
-    const CHEVRONS = 9;
-    for (let i = 0; i < CHEVRONS; i++) {
-      const a  = (i / CHEVRONS) * Math.PI * 2 - Math.PI / 2;
-      const cx = Math.cos(a) * r * 0.955;
-      const cy = Math.sin(a) * r * 0.955;
+    for (let i = 0; i < 9; i++) {
+      const a   = (i / 9) * Math.PI*2 - Math.PI/2;
+      const cx2 = Math.cos(a) * r*0.955;
+      const cy2 = Math.sin(a) * r*0.955;
+
+      // Gate-dialling lock on the hour (sequential)
       const lockDelay = i * 900;
       const isLocked  = isOnTheHour && hourAge > lockDelay && hourAge < lockDelay + 8500;
       const lockFlash = isOnTheHour && hourAge > lockDelay && hourAge < lockDelay + 350;
+
+      // Hand-passing glow
+      const handGlow  = sg.chevGlow.find(g => g.idx === i);
+      const handAge   = handGlow ? (now - handGlow.born) / 1000 : 1; // 0→1 over 1 s
+      const handLit   = handGlow && handAge < 1.0;
+      // Glow fades: bright at 0, gone at 1
+      const handFade  = handLit ? Math.pow(1 - handAge, 1.5) : 0;
+
+      const litByHour = isLocked || lockFlash;
+      const isRed     = litByHour || handLit;
+
       ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(a + Math.PI / 2);
-      const cW = r * 0.088, cH = r * 0.130, cW2 = cW * 0.5;
+      ctx.translate(cx2, cy2); ctx.rotate(a + Math.PI/2);
+      const cW=r*0.088, cH=r*0.130, cW2=cW*0.5;
+
+      // Housing block
       ctx.beginPath();
-      ctx.moveTo(-cW2, cH*0.28); ctx.lineTo(-cW2*0.72,-cH*0.22);
-      ctx.lineTo(-cW2*0.38,-cH*0.52); ctx.lineTo(cW2*0.38,-cH*0.52);
-      ctx.lineTo(cW2*0.72,-cH*0.22); ctx.lineTo(cW2,cH*0.28); ctx.closePath();
-      const bg = ctx.createLinearGradient(-cW2,-cH*0.52,cW2,cH*0.28);
-      bg.addColorStop(0,'#3a3f45'); bg.addColorStop(0.5,'#282c30'); bg.addColorStop(1,'#1c1f22');
-      ctx.fillStyle = bg; ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 0.7; ctx.stroke();
-      const vW = cW*0.70, vH = cH*0.72, vW2 = vW*0.5;
+      ctx.moveTo(-cW2,cH*.28); ctx.lineTo(-cW2*.72,-cH*.22);
+      ctx.lineTo(-cW2*.38,-cH*.52); ctx.lineTo(cW2*.38,-cH*.52);
+      ctx.lineTo(cW2*.72,-cH*.22); ctx.lineTo(cW2,cH*.28); ctx.closePath();
+      const bg=ctx.createLinearGradient(-cW2,-cH*.52,cW2,cH*.28);
+      bg.addColorStop(0,'#3a3f45'); bg.addColorStop(.5,'#282c30'); bg.addColorStop(1,'#1c1f22');
+      ctx.fillStyle=bg; ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.10)'; ctx.lineWidth=0.7; ctx.stroke();
+
+      // Crystal V-shape
+      const vW=cW*.70, vH=cH*.72, vW2=vW*.5;
       ctx.beginPath();
-      ctx.moveTo(0,-vH*0.52); ctx.lineTo(vW2,vH*0.28); ctx.lineTo(vW2*0.4,vH*0.28);
-      ctx.lineTo(0,-vH*0.10); ctx.lineTo(-vW2*0.4,vH*0.28); ctx.lineTo(-vW2,vH*0.28);
+      ctx.moveTo(0,-vH*.52); ctx.lineTo(vW2,vH*.28); ctx.lineTo(vW2*.4,vH*.28);
+      ctx.lineTo(0,-vH*.10); ctx.lineTo(-vW2*.4,vH*.28); ctx.lineTo(-vW2,vH*.28);
       ctx.closePath();
-      if (isLocked) {
-        const rg = ctx.createLinearGradient(0,-vH*0.52,0,vH*0.28);
-        if (lockFlash) { rg.addColorStop(0,'#FFFFFF'); rg.addColorStop(0.3,'#FFAAAA'); rg.addColorStop(1,'#FF2200'); }
-        else            { rg.addColorStop(0,'#FF6644'); rg.addColorStop(0.4,'#FF2200'); rg.addColorStop(1,'#CC1100'); }
-        ctx.fillStyle = rg;
-        ctx.shadowColor = lockFlash ? 'rgba(255,200,180,1)' : 'rgba(255,50,0,0.95)';
-        ctx.shadowBlur  = lockFlash ? 28 : 20;
+
+      if (isRed) {
+        const rg=ctx.createLinearGradient(0,-vH*.52,0,vH*.28);
+        if (lockFlash) {
+          rg.addColorStop(0,'#FFFFFF'); rg.addColorStop(.3,'#FFAAAA'); rg.addColorStop(1,'#FF2200');
+        } else {
+          // Mix between lock-red and hand-glow-red
+          const bright = litByHour ? 1 : handFade;
+          rg.addColorStop(0, `rgba(255,${Math.round(80+bright*26)},${Math.round(bright*20)},1)`);
+          rg.addColorStop(.5,'#FF2000');
+          rg.addColorStop(1,'#CC1100');
+        }
+        ctx.fillStyle=rg;
+        const glowStr = lockFlash ? 28 : (litByHour ? 20 : handFade * 22);
+        ctx.shadowColor='rgba(255,30,0,0.95)'; ctx.shadowBlur=glowStr;
       } else {
-        const ug = ctx.createLinearGradient(0,-vH*0.52,0,vH*0.28);
-        ug.addColorStop(0,'#4a4030'); ug.addColorStop(0.5,'#2e2818'); ug.addColorStop(1,'#1a1408');
-        ctx.fillStyle = ug; ctx.shadowBlur = 0;
+        const ug=ctx.createLinearGradient(0,-vH*.52,0,vH*.28);
+        ug.addColorStop(0,'#4a4030'); ug.addColorStop(.5,'#2e2818'); ug.addColorStop(1,'#1a1408');
+        ctx.fillStyle=ug; ctx.shadowBlur=0;
       }
       ctx.fill();
+
+      // Specular highlight
       ctx.beginPath();
-      ctx.moveTo(-vW2*0.25,-vH*0.45); ctx.lineTo(vW2*0.15,-vH*0.10);
-      ctx.lineTo(vW2*0.05,-vH*0.10);  ctx.lineTo(-vW2*0.32,-vH*0.45);
+      ctx.moveTo(-vW2*.25,-vH*.45); ctx.lineTo(vW2*.15,-vH*.10);
+      ctx.lineTo(vW2*.05,-vH*.10);  ctx.lineTo(-vW2*.32,-vH*.45);
       ctx.closePath();
-      ctx.fillStyle = isLocked ? 'rgba(255,220,200,0.45)' : 'rgba(255,255,200,0.12)';
-      ctx.shadowBlur = 0; ctx.fill();
+      ctx.fillStyle = isRed ? `rgba(255,200,180,${lockFlash?0.55:handFade*0.45})` : 'rgba(255,255,200,0.12)';
+      ctx.shadowBlur=0; ctx.fill();
       ctx.restore();
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 4 — Blit fluid-simulation portal into the circular opening
+    // DRAW — Blit fluid simulation into portal opening
     // ═══════════════════════════════════════════════════════════════
     const pd = rPortal * 2;
     ctx.save();
-    ctx.beginPath(); ctx.arc(0, 0, rPortal, 0, Math.PI * 2); ctx.clip();
-    // Scale the SIM_W×SIM_W offscreen canvas up to fill the portal circle
+    ctx.beginPath(); ctx.arc(0,0,rPortal,0,Math.PI*2); ctx.clip();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(sg.offCanvas, -rPortal, -rPortal, pd, pd);
 
-    // Bright persistent centre glow drawn on top of the simulation
-    const corePulse = Math.sin(T * 1.35) * 0.5 + 0.5;
-    const cg = ctx.createRadialGradient(0,0,0,0,0,rPortal*0.30);
-    cg.addColorStop(0,    `rgba(255,255,255,${0.55 + corePulse*0.20})`);
-    cg.addColorStop(0.15, `rgba(210,245,255,${0.30 + corePulse*0.10})`);
-    cg.addColorStop(0.50, `rgba(80,160,255,0.08)`);
-    cg.addColorStop(1,    'rgba(0,20,80,0)');
-    ctx.fillStyle = cg;
-    ctx.fillRect(-rPortal,-rPortal,pd,pd);
-    ctx.restore(); // end portal clip
-
-    // ═══════════════════════════════════════════════════════════════
-    // STEP 5 — Inner ring edge glow (event horizon rim)
-    // ═══════════════════════════════════════════════════════════════
-    ctx.save();
-    // Outer glow
-    ctx.beginPath(); ctx.arc(0, 0, rPortal + r * 0.012, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(80,180,255,${0.55 + Math.sin(T * 1.5) * 0.12})`;
-    ctx.lineWidth   = r * 0.022;
-    ctx.shadowColor = 'rgba(0,160,255,0.9)';
-    ctx.shadowBlur  = 18;
-    ctx.stroke();
-    // Bright inner lip
-    ctx.beginPath(); ctx.arc(0, 0, rPortal - r * 0.006, 0, Math.PI * 2);
-    ctx.strokeStyle = `rgba(200,240,255,${0.45 + Math.sin(T * 0.9) * 0.10})`;
-    ctx.lineWidth   = r * 0.008;
-    ctx.shadowBlur  = 8;
-    ctx.stroke();
+    // Subtle centre glow (small, doesn't wash out the ripples)
+    const cp = Math.sin(T * 1.1) * 0.5 + 0.5;
+    const cg = ctx.createRadialGradient(0,0,0,0,0,rPortal*0.22);
+    cg.addColorStop(0,   `rgba(200,240,255,${0.35 + cp*0.15})`);
+    cg.addColorStop(0.4, `rgba(80,160,255,0.10)`);
+    cg.addColorStop(1,   'rgba(0,20,80,0)');
+    ctx.fillStyle=cg; ctx.fillRect(-rPortal,-rPortal,pd,pd);
     ctx.restore();
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 6 — Outer bezel metallic edge ring
+    // DRAW — Event horizon rim glow
     // ═══════════════════════════════════════════════════════════════
     ctx.save();
-    ctx.beginPath(); ctx.arc(0, 0, rOuter - 1, 0, Math.PI * 2);
-    const bezelGrad = ctx.createLinearGradient(-rOuter, -rOuter, rOuter, rOuter);
-    bezelGrad.addColorStop(0,    'rgba(200,210,220,0.22)');
-    bezelGrad.addColorStop(0.25, 'rgba(80,90,100,0.12)');
-    bezelGrad.addColorStop(0.5,  'rgba(200,210,220,0.18)');
-    bezelGrad.addColorStop(0.75, 'rgba(60,70,80,0.10)');
-    bezelGrad.addColorStop(1,    'rgba(180,190,200,0.20)');
-    ctx.strokeStyle = bezelGrad;
-    ctx.lineWidth   = 2;
+    ctx.beginPath(); ctx.arc(0,0,rPortal+r*0.010,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(60,160,255,${0.50+Math.sin(T*1.4)*0.10})`;
+    ctx.lineWidth=r*0.018; ctx.shadowColor='rgba(0,140,255,0.85)'; ctx.shadowBlur=14;
     ctx.stroke();
+    ctx.beginPath(); ctx.arc(0,0,rPortal-r*0.005,0,Math.PI*2);
+    ctx.strokeStyle=`rgba(180,230,255,${0.35+Math.sin(T*0.9)*0.08})`;
+    ctx.lineWidth=r*0.006; ctx.shadowBlur=6; ctx.stroke();
+
+    // Outer bezel
+    ctx.beginPath(); ctx.arc(0,0,rOuter-1,0,Math.PI*2);
+    const bz=ctx.createLinearGradient(-rOuter,-rOuter,rOuter,rOuter);
+    bz.addColorStop(0,'rgba(200,210,220,0.20)'); bz.addColorStop(.5,'rgba(200,210,220,0.16)');
+    bz.addColorStop(1,'rgba(180,190,200,0.18)');
+    ctx.strokeStyle=bz; ctx.lineWidth=1.5; ctx.shadowBlur=0; ctx.stroke();
     ctx.restore();
   }
-
   // ── Hands ─────────────────────────────────────────────────────────
   _drawHands(r, h, m, s, secondAngle) {
     const ctx   = this.ctx;
