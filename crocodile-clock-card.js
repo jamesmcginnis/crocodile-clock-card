@@ -740,8 +740,8 @@ class CrocodileClockDrawer {
     const mCol  = cfg.minute_hand_color || '#FFFFFF';
     const sCol  = cfg.second_hand_color || '#FF3B30';
 
-    const hourAngle = ((h % 12 + m / 60 + s / 3600) / 12) * 2 * Math.PI - Math.PI / 2;
-    const minAngle  = ((m + s / 60) / 60) * 2 * Math.PI - Math.PI / 2;
+    const hourAngle = ((h % 12 + m / 60 + s / 3600) / 12) * 2 * Math.PI;
+    const minAngle  = ((m + s / 60) / 60) * 2 * Math.PI;
 
     const isLuxury   = face === 'luxury'   || face === 'art_deco';
     const isNeon     = face === 'neon'     || face === 'celestial';
@@ -1028,7 +1028,7 @@ class CrocodileClockCard extends HTMLElement {
           if (rawSec !== this._lastSec) {
             this._lastSec      = rawSec;
             this._springFrom   = this._currAngle;
-            this._springTarget = (s / 60) * 2 * Math.PI - Math.PI / 2;
+            this._springTarget = (s / 60) * 2 * Math.PI;
             // Wrap-around: always move forward
             if (this._springTarget < this._springFrom - Math.PI) {
               this._springTarget += 2 * Math.PI;
@@ -1045,7 +1045,7 @@ class CrocodileClockCard extends HTMLElement {
           this._currAngle = secAngle;
         } else {
           // ── Smooth sweep ───────────────────────────────────────────
-          secAngle        = ((s + ms / 1000) / 60) * 2 * Math.PI - Math.PI / 2;
+          secAngle        = ((s + ms / 1000) / 60) * 2 * Math.PI;
           this._currAngle = secAngle;
         }
       }
