@@ -8,7 +8,7 @@
  * Author:     James McGinnis
  */
 
-const CC_VERSION = '1.6.0';
+const CC_VERSION = '1.7.0';
 
 // ── Canvas roundRect polyfill ─────────────────────────────────────
 (function () {
@@ -615,7 +615,7 @@ class CrocodileClockCard extends HTMLElement {
       accent_color:      '#007AFF',
       show_date:         false,
       popup_url:         '',
-      timezone:          '',
+
     };
   }
 
@@ -724,41 +724,22 @@ class CrocodileClockCard extends HTMLElement {
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-  // Return current time parts in the correct timezone.
-  // Priority: 1) manual timezone from config, 2) HA server timezone (hass.config.time_zone), 3) browser local
+  // Return current time parts from sensor.time (local time, format "HH:MM").
+  // s and ms always come from the browser for smooth animation — seconds are timezone-independent.
   _haTimeParts() {
-    const now      = new Date();
-    const manualTz = (this._config?.timezone || '').trim();
-    const haTz     = this._hass?.config?.time_zone || '';
-    const tz       = manualTz || haTz;
-
-    if (tz) {
-      try {
-        // Cache the formatter — reconstructing every frame (60fps) is wasteful
-        if (!this._tzFmt || this._tzFmtKey !== tz) {
-          this._tzFmtKey = tz;
-          this._tzFmt    = new Intl.DateTimeFormat('en-US', {
-            timeZone: tz,
-            hour:     'numeric',
-            minute:   'numeric',
-            second:   'numeric',
-            hour12:   false,
-          });
+    const now   = new Date();
+    const state = this._hass?.states?.['sensor.time']?.state; // "HH:MM" local time
+    if (state) {
+      const parts = state.split(':');
+      if (parts.length === 2) {
+        const h = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10);
+        if (!isNaN(h) && !isNaN(m)) {
+          return { h, m, s: now.getSeconds(), ms: now.getMilliseconds() };
         }
-        const parts = Object.fromEntries(
-          this._tzFmt.formatToParts(now).map(p => [p.type, p.value])
-        );
-        // hour12:false can return '24' at midnight on some engines — normalise to 0
-        const h = parseInt(parts.hour,   10) % 24;
-        const m = parseInt(parts.minute, 10);
-        const s = parseInt(parts.second, 10);
-        return { h, m, s, ms: now.getMilliseconds() };
-      } catch (e) {
-        console.warn('[CrocodileClockCard] Invalid timezone "' + tz + '":', e.message);
-        this._tzFmt = null;
       }
     }
-    // Final fallback: browser local time
+    // Fallback: browser local time if sensor.time is unavailable
     return {
       h:  now.getHours(),
       m:  now.getMinutes(),
@@ -804,16 +785,14 @@ class CrocodileClockCard extends HTMLElement {
         }
       }
 
-      // Update date label respecting configured timezone
+      // Update date label from sensor.date (local date, format "YYYY-MM-DD")
       const dateEl = this.shadowRoot.getElementById('cc-date-el');
       if (dateEl) {
-        const tz   = (cfg.timezone || '').trim();
-        const opts = { weekday: 'short', month: 'short', day: 'numeric' };
-        try {
-          dateEl.textContent = new Date().toLocaleDateString('en-GB', tz ? { ...opts, timeZone: tz } : opts);
-        } catch (_) {
-          dateEl.textContent = new Date().toLocaleDateString('en-GB', opts);
-        }
+        const dateState = this._hass?.states?.['sensor.date']?.state;
+        const d = dateState ? new Date(dateState + 'T00:00:00') : new Date();
+        dateEl.textContent = d.toLocaleDateString('en-GB', {
+          weekday: 'short', month: 'short', day: 'numeric',
+        });
       }
 
       if (this._drawer) this._drawer.draw(h, m, s, secAngle);
@@ -967,13 +946,11 @@ class CrocodileClockCard extends HTMLElement {
         timeEl.textContent = `${String(hh).padStart(2, '0')}:${mm}${sp}`;
         ampmEl.textContent = '';
       }
-      const _tz   = (cfg.timezone || '').trim();
-      const _opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
-      try {
-        fullDateEl.textContent = new Date().toLocaleDateString('en-GB', _tz ? { ..._opts, timeZone: _tz } : _opts);
-      } catch (_) {
-        fullDateEl.textContent = new Date().toLocaleDateString('en-GB', _opts);
-      }
+      const _dateState = self._hass?.states?.['sensor.date']?.state;
+      const _d = _dateState ? new Date(_dateState + 'T00:00:00') : new Date();
+      fullDateEl.textContent = _d.toLocaleDateString('en-GB', {
+        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+      });
     };
     timeInterval = setInterval(updateTime, 500);
     updateTime();
@@ -1239,24 +1216,6 @@ class CrocodileClockCardEditor extends HTMLElement {
           </div>
         </div>
 
-        <!-- ── Timezone ── -->
-        <div>
-          <div class="section-title">Timezone</div>
-          <div class="card-block">
-            <div class="select-row">
-              <label>IANA Timezone</label>
-              <div class="hint" style="margin-bottom:8px;">
-                Optional override. By default the clock uses your Home Assistant server timezone automatically.
-                Only set this if you want to display a <em>different</em> timezone — e.g. <b>America/New_York</b> or <b>Asia/Tokyo</b>.
-                Must be a valid IANA name (e.g. <b>Europe/London</b>, not <em>London</em>).
-              </div>
-              <input type="text" id="cc_timezone"
-                placeholder="e.g. Europe/London"
-                value="${cfg.timezone || ''}">
-            </div>
-          </div>
-        </div>
-
         <!-- ── Popup Clock Format ── -->
         <div>
           <div class="section-title">Popup Clock Format</div>
@@ -1409,9 +1368,6 @@ class CrocodileClockCardEditor extends HTMLElement {
     const urlTitleEl = root.getElementById('cc_popup_url_title');
     if (urlTitleEl) urlTitleEl.onchange = () => this._set('popup_url_title', urlTitleEl.value);
 
-    // Timezone
-    const tzEl = root.getElementById('cc_timezone');
-    if (tzEl) tzEl.onchange = () => this._set('timezone', tzEl.value.trim());
 
     // Opacity slider
     const opEl  = root.getElementById('cc_card_opacity');
