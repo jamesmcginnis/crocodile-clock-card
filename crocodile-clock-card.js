@@ -1074,8 +1074,12 @@ class CrocodileClockCard extends HTMLElement {
       linkIcon.setAttribute('fill', 'currentColor');
       linkIcon.innerHTML = '<path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>';
       // Shorten display label to hostname if long
-      let displayUrl = popupUrl;
-      try { displayUrl = new URL(popupUrl).hostname || popupUrl; } catch (_) {}
+      const customTitle = (cfg.popup_url_title || '').trim();
+      let displayUrl = customTitle;
+      if (!displayUrl) {
+        displayUrl = popupUrl;
+        try { displayUrl = new URL(popupUrl).hostname || popupUrl; } catch (_) {}
+      }
       urlEl.appendChild(linkIcon);
       urlEl.appendChild(document.createTextNode(displayUrl));
     }
@@ -1260,6 +1264,13 @@ class CrocodileClockCardEditor extends HTMLElement {
                 placeholder="https://example.com"
                 value="${cfg.popup_url || ''}">
             </div>
+            <div class="select-row" style="margin-top:10px;">
+              <label>Link Title</label>
+              <div class="hint" style="margin-bottom:8px;">Custom label for the link. Falls back to the URL hostname if left blank.</div>
+              <input type="text" id="cc_popup_url_title"
+                placeholder="e.g. Open Dashboard"
+                value="${cfg.popup_url_title || ''}">
+            </div>
           </div>
         </div>
 
@@ -1323,6 +1334,8 @@ class CrocodileClockCardEditor extends HTMLElement {
     // Popup URL
     const urlInputEl = root.getElementById('cc_popup_url');
     if (urlInputEl) urlInputEl.onchange = () => this._set('popup_url', urlInputEl.value);
+    const urlTitleEl = root.getElementById('cc_popup_url_title');
+    if (urlTitleEl) urlTitleEl.onchange = () => this._set('popup_url_title', urlTitleEl.value);
 
     // Opacity slider
     const opEl  = root.getElementById('cc_card_opacity');
