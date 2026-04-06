@@ -8,7 +8,7 @@
  * Author:     James McGinnis
  */
 
-const CC_VERSION = '1.7.0';
+const CC_VERSION = '1.8.0';
 
 // ── Canvas roundRect polyfill ─────────────────────────────────────
 (function () {
@@ -750,9 +750,24 @@ class CrocodileClockCard extends HTMLElement {
 
   _startClock() {
     const tick = () => {
-      const { h, m, s, ms } = this._haTimeParts();
       const now = new Date();
       const cfg = this._config;
+
+      // ── Read local time from sensor.time ("HH:MM") ──────────────────
+      // sensor.time is the HA Time & Date integration — always local time.
+      // s and ms come from the browser (timezone-independent sub-minute precision).
+      let h, m;
+      const timeState = this._hass?.states?.['sensor.time']?.state;
+      if (timeState && timeState.includes(':')) {
+        const tp = timeState.split(':');
+        h = parseInt(tp[0], 10);
+        m = parseInt(tp[1], 10);
+      } else {
+        h = now.getHours();
+        m = now.getMinutes();
+      }
+      const s  = now.getSeconds();
+      const ms = now.getMilliseconds();
 
       let secAngle;
       if (cfg.show_seconds) {
@@ -932,7 +947,18 @@ class CrocodileClockCard extends HTMLElement {
     let timeInterval;
     const self = this;
     const updateTime = () => {
-      const { h: _h, m: _m, s: _s } = self._haTimeParts();
+      const _now = new Date();
+      let _h, _m;
+      const _ts = self._hass?.states?.['sensor.time']?.state;
+      if (_ts && _ts.includes(':')) {
+        const _tp = _ts.split(':');
+        _h = parseInt(_tp[0], 10);
+        _m = parseInt(_tp[1], 10);
+      } else {
+        _h = _now.getHours();
+        _m = _now.getMinutes();
+      }
+      const _s  = _now.getSeconds();
       let   hh  = _h;
       const mm  = String(_m).padStart(2, '0');
       const ss  = String(_s).padStart(2, '0');
