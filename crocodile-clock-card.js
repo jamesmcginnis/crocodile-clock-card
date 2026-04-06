@@ -718,15 +718,23 @@ class CrocodileClockDrawer {
     const PI2loc  = Math.PI * 2;
 
     // Hand angles → chevron collision
+    // Chevron i is centred at angle (i/9)*2π - π/2, spanning ±(1/18)th of a circle.
+    // fracToChev maps a hand's 0→1 fraction to the chevron index it's currently over.
+    // We use plain Math.floor(f * 9) — NO rounding offset — so the trigger fires
+    // exactly when the hand tip crosses into a chevron zone, not before it.
     const hourAngle = ((h % 12 + m / 60 + s / 3600) / 12) * PI2;
     const minAngle  = ((m + s / 60) / 60) * PI2;
-    const hourFrac  = hourAngle / PI2;
-    const minFrac   = minAngle  / PI2;
-    const secFrac   = (secondAngle !== undefined) ? secondAngle / PI2 : -1;
-    const fracToChev = f => Math.floor(((f % 1 + 1) % 1) * 9 + 0.5) % 9;
-    const hChev = fracToChev(hourFrac);
-    const mChev = fracToChev(minFrac);
-    const sChev = secFrac >= 0 ? fracToChev(secFrac) : -1;
+    // secondAngle already runs 0→2π exactly like the hand, offset by -π/2 at top.
+    // We normalise all angles the same way: shift by +π/2 so 12-o'clock = 0, then
+    // divide by 2π to get 0→1, then floor×9 for chevron index.
+    const normFrac  = a => (((a + Math.PI / 2) % PI2 + PI2) % PI2) / PI2;
+    const hFrac     = normFrac(hourAngle);
+    const mFrac     = normFrac(minAngle);
+    const sFrac     = (secondAngle !== undefined) ? normFrac(secondAngle) : -1;
+    const fracToChev = f => Math.floor(f * 9) % 9;
+    const hChev = fracToChev(hFrac);
+    const mChev = fracToChev(mFrac);
+    const sChev = sFrac >= 0 ? fracToChev(sFrac) : -1;
     const triggerChev = idx => {
       if (!sg.chevGlow.find(g => g.idx === idx && now - g.born < 900))
         sg.chevGlow.push({ idx, born: now });
@@ -736,34 +744,46 @@ class CrocodileClockDrawer {
     if (sChev >= 0 && sChev !== sg.prevSecChev) { triggerChev(sChev); sg.prevSecChev = sChev; }
     sg.chevGlow = sg.chevGlow.filter(g => now - g.born < 1100);
 
-    // Ripple spawning
+    // ── Ripple management ─────────────────────────────────────────
     sg.rippleTimer++;
-    if (sg.rippleTimer % 90 === 0) sg.ripples.push({ rx: rPortal * 0.04, op: 0.70, born: now });
+    // Ambient drip every ~100 frames
+    if (sg.rippleTimer % 100 === 0) {
+      const ox = (Math.random() - 0.5) * rPortal * 0.28;
+      const oy = (Math.random() - 0.5) * rPortal * 0.18;
+      sg.ripples.push({ rx: rPortal * 0.03, op: 0.62, born: now, ox, oy,
+        speed: rPortal * 0.010 + Math.random() * rPortal * 0.004,
+        tilt: (Math.random() - 0.5) * 0.20 });
+    }
+    // Minute change → kawoosh + 5 staggered rings
     if (m !== sg.prevMinute) {
       sg.prevMinute = m;
       sg.kawoosh = { progress: 0, maxR: rPortal * 3.0 };
-      for (let i = 0; i < 4; i++) sg.ripples.push({ rx: rPortal * (0.04 + i * 0.01), op: 0.9 - i * 0.12, born: now + i * 130 });
+      for (let i = 0; i < 5; i++) sg.ripples.push({
+        rx: rPortal * 0.025, op: 0.90 - i * 0.10, born: now + i * 110,
+        ox: 0, oy: 0, speed: rPortal * (0.014 - i * 0.0008),
+        tilt: (Math.random() - 0.5) * 0.10 });
     }
+    // Hour → two extra rings
     if (isOnTheHour && now - sg.hourFlash > 12000) {
       sg.hourFlash = now;
-      sg.ripples.push({ rx: rPortal * 0.28, op: 0.90, born: now });
-      sg.ripples.push({ rx: rPortal * 0.16, op: 0.75, born: now + 200 });
+      [0, 200].forEach((delay, j) => sg.ripples.push({
+        rx: rPortal * (0.10 + j * 0.08), op: 0.85 - j * 0.12, born: now + delay,
+        ox: 0, oy: 0, speed: rPortal * 0.011, tilt: 0 }));
     }
-
-    const RIPPLE_SPEED = rPortal * 0.012;
+    // Advance ripples
     for (let i = sg.ripples.length - 1; i >= 0; i--) {
-      if (now < sg.ripples[i].born) continue;
-      sg.ripples[i].rx += RIPPLE_SPEED;
-      sg.ripples[i].op *= 0.966;
-      if (sg.ripples[i].op < 0.03 || sg.ripples[i].rx > rPortal * 1.05) sg.ripples.splice(i, 1);
+      const rp = sg.ripples[i];
+      if (now < rp.born) continue;
+      rp.rx += rp.speed;
+      rp.op *= 0.968;
+      if (rp.op < 0.025 || rp.rx > rPortal * 1.06) sg.ripples.splice(i, 1);
     }
+    // Advance kawoosh
     if (sg.kawoosh) {
       sg.kawoosh.progress += 0.025;
       sg.kawoosh.op = Math.max(0, 1 - sg.kawoosh.progress * 1.15);
       if (sg.kawoosh.progress >= 1) sg.kawoosh = null;
     }
-
-    // ── DRAW 1: Stone ring ──────────────────────────────────────
     const stoneGrad = ctx.createRadialGradient(0, 0, rPortal, 0, 0, rOuter);
     stoneGrad.addColorStop(0, '#2a2d30'); stoneGrad.addColorStop(0.18, '#1e2124');
     stoneGrad.addColorStop(0.55, '#2c3035'); stoneGrad.addColorStop(0.82, '#1a1d20');
@@ -820,21 +840,45 @@ class CrocodileClockDrawer {
     sg2.addColorStop(0.62,`rgba(115,218,255,${sa*0.55})`); sg2.addColorStop(1,'rgba(75,188,255,0)');
     ctx.fillStyle=sg2; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
 
-    // Ripple ellipses (perspective-foreshortened)
+    // Ripple ellipses — perspective-foreshortened, multi-ring per ripple
+    // Each ripple gets 3 concentric rings: dark trough, bright crest, inner glow.
+    // Ellipses are slightly tilted per-ripple for organic variation.
+    // Off-centre ripples (ox,oy) are translated before drawing.
     for (const rp of sg.ripples) {
       if (now < rp.born || rp.rx <= 0 || rp.rx > rPortal + 2) continue;
       const ry = rp.rx * PERSP;
       ctx.save();
-      // Leading dark trough
-      ctx.beginPath(); ctx.ellipse(0,0,rp.rx*1.028,ry*1.028,0,0,PI2);
-      ctx.strokeStyle=`rgba(0,14,52,${rp.op*0.52})`; ctx.lineWidth=rPortal*0.018*(0.3+rp.op); ctx.stroke();
-      // Main bright crest
+      if (rp.ox || rp.oy) ctx.translate(rp.ox, rp.oy);
+      if (rp.tilt) ctx.rotate(rp.tilt);
+
+      // 1. Leading dark trough (shadow ahead of crest)
+      ctx.beginPath(); ctx.ellipse(0,0,rp.rx*1.032,ry*1.032,0,0,PI2);
+      ctx.strokeStyle = `rgba(0,12,48,${rp.op * 0.50})`;
+      ctx.lineWidth   = rPortal * 0.020 * (0.25 + rp.op * 0.9);
+      ctx.stroke();
+
+      // 2. Main bright crest — the characteristic silver-cyan ring
       ctx.beginPath(); ctx.ellipse(0,0,rp.rx,ry,0,0,PI2);
-      ctx.strokeStyle=`rgba(188,238,255,${rp.op*0.92})`; ctx.lineWidth=rPortal*0.014*(0.4+rp.op*0.8);
-      ctx.shadowColor=`rgba(110,208,255,${rp.op*0.55})`; ctx.shadowBlur=4; ctx.stroke();
-      // Inner trailing glow
-      ctx.beginPath(); ctx.ellipse(0,0,rp.rx*0.958,ry*0.958,0,0,PI2);
-      ctx.strokeStyle=`rgba(72,175,255,${rp.op*0.38})`; ctx.lineWidth=rPortal*0.007; ctx.shadowBlur=0; ctx.stroke();
+      ctx.strokeStyle = `rgba(185,238,255,${rp.op * 0.94})`;
+      ctx.lineWidth   = rPortal * 0.016 * (0.35 + rp.op * 0.85);
+      ctx.shadowColor = `rgba(100,205,255,${rp.op * 0.50})`;
+      ctx.shadowBlur  = 5;
+      ctx.stroke();
+
+      // 3. Inner soft glow (trailing face of wave)
+      ctx.beginPath(); ctx.ellipse(0,0,rp.rx*0.955,ry*0.955,0,0,PI2);
+      ctx.strokeStyle = `rgba(65,172,255,${rp.op * 0.38})`;
+      ctx.lineWidth   = rPortal * 0.008;
+      ctx.shadowBlur  = 0;
+      ctx.stroke();
+
+      // 4. Very thin bright highlight at crest tip (only on strong ripples)
+      if (rp.op > 0.35) {
+        ctx.beginPath(); ctx.ellipse(0,0,rp.rx*1.008,ry*1.008,0,0,PI2);
+        ctx.strokeStyle = `rgba(240,252,255,${(rp.op - 0.35) * 0.55})`;
+        ctx.lineWidth   = rPortal * 0.005;
+        ctx.stroke();
+      }
       ctx.restore();
     }
 
