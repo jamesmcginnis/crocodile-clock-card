@@ -632,7 +632,8 @@ class CrocodileClockCard extends HTMLElement {
   }
 
   connectedCallback() {
-    if (this._config && !this._raf) this._startClock();
+    // Only start if hass is already assigned (sensor.time will be available)
+    if (this._config && this._hass && !this._raf) this._startClock();
   }
 
   disconnectedCallback() {
@@ -717,24 +718,33 @@ class CrocodileClockCard extends HTMLElement {
     this._drawer.resize(220);
 
     card.addEventListener('click', () => this._openPopup());
-    this._startClock();
+    // Don't start the clock here — wait for hass to be assigned so
+    // sensor.time is available. The hass setter and connectedCallback
+    // will start it once hass is ready.
   }
 
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
   _getTimeParts() {
-    // Use browser-native local time exclusively.
-    // getHours() / getMinutes() are always in the browser's local timezone —
-    // no UTC arithmetic, no sensor dependency, no offset math.
-    // The popup already proves this gives the correct local time.
+    // S and MS are timezone-independent — always safe from the browser.
     const now = new Date();
-    return {
-      h:  now.getHours(),
-      m:  now.getMinutes(),
-      s:  now.getSeconds(),
-      ms: now.getMilliseconds(),
-    };
+    const s   = now.getSeconds();
+    const ms  = now.getMilliseconds();
+
+    // H and M: use sensor.time exclusively (format "H:MM" or "HH:MM").
+    // HA pushes this in the server's configured timezone (Europe/London),
+    // bypassing any Date() sandboxing in the Lovelace card context.
+    const timeState = this._hass?.states?.['sensor.time']?.state;
+    if (timeState) {
+      const [hStr, mStr] = timeState.split(':');
+      const h = parseInt(hStr, 10);
+      const m = parseInt(mStr, 10);
+      if (!isNaN(h) && !isNaN(m)) return { h, m, s, ms };
+    }
+
+    // Absolute fallback (should never be reached once hass is assigned)
+    return { h: now.getHours(), m: now.getMinutes(), s, ms };
   }
 
   _startClock() {
