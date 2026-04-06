@@ -615,6 +615,7 @@ class CrocodileClockCard extends HTMLElement {
       accent_color:      '#007AFF',
       show_date:         false,
       popup_url:         '',
+      timezone:          '',
     };
   }
 
@@ -723,23 +724,32 @@ class CrocodileClockCard extends HTMLElement {
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-  // Read time from sensor.date_time_utc (format: "2026-04-06, 09:35")
-  // Returns { h, m } from HA entity, s/ms from browser for smooth animation
+  // Return current time parts in the configured timezone (or browser local time).
   _haTimeParts() {
-    const state = this._hass?.states?.['sensor.date_time_utc']?.state;
-    if (state) {
-      const timePart = state.includes(', ') ? state.split(', ')[1] : state.split(' ')[1];
-      if (timePart) {
-        const [h, m] = timePart.split(':').map(Number);
-        if (!isNaN(h) && !isNaN(m)) {
-          const now = new Date();
-          return { h, m, s: now.getSeconds(), ms: now.getMilliseconds() };
-        }
-      }
-    }
-    // Fallback to browser time if entity not available
     const now = new Date();
-    return { h: now.getHours(), m: now.getMinutes(), s: now.getSeconds(), ms: now.getMilliseconds() };
+    const tz  = (this._config?.timezone || '').trim();
+    if (tz) {
+      try {
+        const fmt = new Intl.DateTimeFormat('en-US', {
+          timeZone: tz,
+          hour:     'numeric',
+          minute:   'numeric',
+          second:   'numeric',
+          hour12:   false,
+        });
+        const parts = Object.fromEntries(fmt.formatToParts(now).map(p => [p.type, p.value]));
+        const h  = parseInt(parts.hour,   10) % 24;
+        const m  = parseInt(parts.minute, 10);
+        const s  = parseInt(parts.second, 10);
+        return { h, m, s, ms: now.getMilliseconds() };
+      } catch (_) { /* invalid tz — fall through */ }
+    }
+    return {
+      h:  now.getHours(),
+      m:  now.getMinutes(),
+      s:  now.getSeconds(),
+      ms: now.getMilliseconds(),
+    };
   }
 
   _startClock() {
@@ -779,20 +789,15 @@ class CrocodileClockCard extends HTMLElement {
         }
       }
 
-      // Update date label from sensor.date_time_utc date part
+      // Update date label respecting configured timezone
       const dateEl = this.shadowRoot.getElementById('cc-date-el');
       if (dateEl) {
-        const dtState = this._hass?.states?.['sensor.date_time_utc']?.state;
-        if (dtState && dtState.includes(', ')) {
-          const datePart = dtState.split(', ')[0]; // "2026-04-06"
-          const d = new Date(datePart + 'T00:00:00');
-          dateEl.textContent = d.toLocaleDateString('en-GB', {
-            weekday: 'short', month: 'short', day: 'numeric',
-          });
-        } else {
-          dateEl.textContent = new Date().toLocaleDateString(undefined, {
-            weekday: 'short', month: 'short', day: 'numeric',
-          });
+        const tz   = (cfg.timezone || '').trim();
+        const opts = { weekday: 'short', month: 'short', day: 'numeric' };
+        try {
+          dateEl.textContent = new Date().toLocaleDateString('en-GB', tz ? { ...opts, timeZone: tz } : opts);
+        } catch (_) {
+          dateEl.textContent = new Date().toLocaleDateString('en-GB', opts);
         }
       }
 
@@ -947,11 +952,13 @@ class CrocodileClockCard extends HTMLElement {
         timeEl.textContent = `${String(hh).padStart(2, '0')}:${mm}${sp}`;
         ampmEl.textContent = '';
       }
-      const _dtState = self._hass?.states?.['sensor.date_time_utc']?.state;
-      const _dateBase = (_dtState && _dtState.includes(', ')) ? new Date(_dtState.split(', ')[0] + 'T00:00:00') : new Date();
-      fullDateEl.textContent = _dateBase.toLocaleDateString('en-GB', {
-        weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-      });
+      const _tz   = (cfg.timezone || '').trim();
+      const _opts = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
+      try {
+        fullDateEl.textContent = new Date().toLocaleDateString('en-GB', _tz ? { ..._opts, timeZone: _tz } : _opts);
+      } catch (_) {
+        fullDateEl.textContent = new Date().toLocaleDateString('en-GB', _opts);
+      }
     };
     timeInterval = setInterval(updateTime, 500);
     updateTime();
@@ -1217,6 +1224,23 @@ class CrocodileClockCardEditor extends HTMLElement {
           </div>
         </div>
 
+        <!-- ── Timezone ── -->
+        <div>
+          <div class="section-title">Timezone</div>
+          <div class="card-block">
+            <div class="select-row">
+              <label>IANA Timezone</label>
+              <div class="hint" style="margin-bottom:8px;">
+                Enter a timezone name such as <b>Europe/London</b>, <b>America/New_York</b>, or <b>Asia/Tokyo</b>.
+                Leave blank to use your browser's local time.
+              </div>
+              <input type="text" id="cc_timezone"
+                placeholder="e.g. Europe/London"
+                value="${cfg.timezone || ''}">
+            </div>
+          </div>
+        </div>
+
         <!-- ── Popup Clock Format ── -->
         <div>
           <div class="section-title">Popup Clock Format</div>
@@ -1368,6 +1392,10 @@ class CrocodileClockCardEditor extends HTMLElement {
     if (urlInputEl) urlInputEl.onchange = () => this._set('popup_url', urlInputEl.value);
     const urlTitleEl = root.getElementById('cc_popup_url_title');
     if (urlTitleEl) urlTitleEl.onchange = () => this._set('popup_url_title', urlTitleEl.value);
+
+    // Timezone
+    const tzEl = root.getElementById('cc_timezone');
+    if (tzEl) tzEl.onchange = () => this._set('timezone', tzEl.value.trim());
 
     // Opacity slider
     const opEl  = root.getElementById('cc_card_opacity');
