@@ -719,13 +719,35 @@ class CrocodileClockCard extends HTMLElement {
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
+  // Returns a Date-like object with h/m/s/ms resolved in HA's configured timezone
+  _haTimeParts(now) {
+    const tz = this.hass?.config?.time_zone;
+    if (!tz) {
+      return { h: now.getHours(), m: now.getMinutes(), s: now.getSeconds(), ms: now.getMilliseconds() };
+    }
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      hour: 'numeric', minute: 'numeric', second: 'numeric',
+      hour12: false,
+    }).formatToParts(now);
+    const get = type => parseInt(parts.find(p => p.type === type)?.value ?? '0', 10);
+    // hour12:false returns 24 for midnight — normalise to 0
+    const h = get('hour') % 24;
+    return { h, m: get('minute'), s: get('second'), ms: now.getMilliseconds() };
+  }
+
+  _haDateStr(now) {
+    const tz = this.hass?.config?.time_zone;
+    return now.toLocaleDateString(tz ? 'en-GB' : undefined, {
+      timeZone: tz || undefined,
+      weekday: 'short', month: 'short', day: 'numeric',
+    });
+  }
+
   _startClock() {
     const tick = () => {
-      const now = new Date();
-      const h   = now.getHours();
-      const m   = now.getMinutes();
-      const s   = now.getSeconds();
-      const ms  = now.getMilliseconds();
+      const now           = new Date();
+      const { h, m, s, ms } = this._haTimeParts(now);
       const cfg = this._config;
 
       let secAngle;
@@ -762,9 +784,7 @@ class CrocodileClockCard extends HTMLElement {
       // Update date label
       const dateEl = this.shadowRoot.getElementById('cc-date-el');
       if (dateEl) {
-        dateEl.textContent = now.toLocaleDateString(undefined, {
-          weekday: 'short', month: 'short', day: 'numeric',
-        });
+        dateEl.textContent = this._haDateStr(now);
       }
 
       if (this._drawer) this._drawer.draw(h, m, s, secAngle);
@@ -902,11 +922,13 @@ class CrocodileClockCard extends HTMLElement {
     });
 
     let timeInterval;
+    const self = this;
     const updateTime = () => {
-      const now = new Date();
-      let   hh  = now.getHours();
-      const mm  = String(now.getMinutes()).padStart(2, '0');
-      const ss  = String(now.getSeconds()).padStart(2, '0');
+      const now              = new Date();
+      const { h: _h, m: _m, s: _s } = self._haTimeParts(now);
+      let   hh  = _h;
+      const mm  = String(_m).padStart(2, '0');
+      const ss  = String(_s).padStart(2, '0');
       const sp  = cfg.show_seconds ? `:${ss}` : '';
       if (format === '12') {
         const ampm = hh >= 12 ? 'PM' : 'AM';
@@ -917,7 +939,7 @@ class CrocodileClockCard extends HTMLElement {
         timeEl.textContent = `${String(hh).padStart(2, '0')}:${mm}${sp}`;
         ampmEl.textContent = '';
       }
-      fullDateEl.textContent = now.toLocaleDateString(undefined, {
+      fullDateEl.textContent = now.toLocaleDateString(self.hass?.config?.time_zone ? 'en-GB' : undefined, { timeZone: self.hass?.config?.time_zone || undefined,
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
     };
@@ -1268,7 +1290,7 @@ class CrocodileClockCardEditor extends HTMLElement {
               <label>Link Title</label>
               <div class="hint" style="margin-bottom:8px;">Custom label for the link. Falls back to the URL hostname if left blank.</div>
               <input type="text" id="cc_popup_url_title"
-                placeholder="e.g. Open Dashboard"
+                placeholder="e.g. calshow://"
                 value="${cfg.popup_url_title || ''}">
             </div>
           </div>
