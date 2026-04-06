@@ -1,6 +1,6 @@
 # Crocodile Clock Card
 
-A custom Home Assistant Lovelace card featuring a fully customisable analog clock with seven distinct clock faces, a smooth sweep or mechanical tick second hand, and a glassmorphic popup with a large digital clock and interactive calendar.
+A custom Home Assistant Lovelace card featuring a fully customisable analog clock with seven distinct clock faces, a smooth sweep or mechanical tick second hand, and a glassmorphic popup with a large digital clock, interactive calendar, and optional link.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
@@ -16,8 +16,8 @@ A custom Home Assistant Lovelace card featuring a fully customisable analog cloc
 - **Transparent background** support with adjustable opacity (10–100%)
 - **Tap-to-open popup** — glassmorphic overlay with a large digital clock (12 hr / 24 hr) and a full interactive calendar
 - **Interactive calendar** — Monday-first grid, month navigation, today highlighted with the accent colour
+- **Optional popup link** — configure a URL that appears as a button at the bottom of the popup
 - **Optional date display** below the clock on the card face
-- **Optional card title**
 - **Full visual editor** — no YAML required
 
 ---
@@ -63,7 +63,7 @@ minute_hand_color: "#FFFFFF"
 second_hand_color: "#FF3B30"
 accent_color: "#007AFF"
 show_date: false
-title: ""
+popup_url: ""
 ```
 
 ### Options
@@ -83,7 +83,7 @@ title: ""
 | `second_hand_color` | string  | `#FF3B30`   | Second hand and centre cap colour                                           |
 | `accent_color`      | string  | `#007AFF`   | Accent colour used for glow effects, calendar today highlight, and the popup colon pulse |
 | `show_date`         | boolean | `false`     | Show the current date below the clock on the card face                     |
-| `title`             | string  | `""`        | Optional title displayed above the clock                                   |
+| `popup_url`         | string  | `""`        | URL to open as a link at the bottom of the popup. Leave blank to disable   |
 
 ---
 
@@ -102,7 +102,7 @@ Roman numerals (I through XII) with tapered hands. A traditional face with a for
 Bold Arabic numerals at the four quarter positions (12, 3, 6, 9) with accent-coloured tick marks at the remaining positions. Tapered hands.
 
 ### Luxury
-Baton indices replacing numerals, rendered in the accent colour with a highlight stripe along each baton. Baton-style hands with a matching highlight. Inspired by high-end mechanical watch design.
+Baton indices replacing numerals, rendered in gold with a highlight stripe along each baton. Baton-style hands with a matching highlight. Inspired by high-end mechanical watch design.
 
 ### Skeleton
 Diamond-shaped markers at each hour position with structural decorative rings on the dial face. Tapered hands. Suited to technical or dark dashboards.
@@ -129,6 +129,7 @@ Tapping anywhere on the clock opens a popup overlay with:
 - **Large digital time** — displayed in the format selected in the visual editor (12-hour with AM/PM, or 24-hour)
 - **Full date line** — day of week, date, month, and year
 - **Interactive calendar** — monthly grid, Monday-first, with navigation arrows and a **Today** button to return to the current month
+- **Optional link** — if a URL is configured, a styled button appears at the bottom of the popup
 
 The current day is highlighted with a filled circle in the accent colour. Days from the previous and next month are shown at reduced opacity to fill the grid. The popup can be closed with the × button or by pressing Escape.
 
