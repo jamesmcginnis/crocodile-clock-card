@@ -47,9 +47,9 @@ const CC_FACES = [
   { value: 'neon',      label: 'Neon',      symbol: '◎' },
   { value: 'retro',     label: 'Retro',     symbol: 'IX' },
   { value: 'sport',     label: 'Sport',     symbol: '▮' },
-  { value: 'compass',   label: 'Compass',   symbol: 'N' },
   { value: 'art_deco',  label: 'Art Deco',  symbol: '❖' },
   { value: 'celestial', label: 'Celestial', symbol: '✧' },
+  { value: 'stargate',  label: 'Stargate',  symbol: '⬡' },
 ];
 
 // ── Helper: hex colour to rgba ─────────────────────────────────────
@@ -181,14 +181,14 @@ class CrocodileClockDrawer {
     ctx.scale(dpr, dpr);
     ctx.translate(r, r);
 
-    this._drawFace(r);
+    this._drawFace(r, h, m, s);
     this._drawHands(r, h, m, s, secondAngle);
 
     ctx.restore();
   }
 
   // ── Face ─────────────────────────────────────────────────────────
-  _drawFace(r) {
+  _drawFace(r, h, m, s) {
     const ctx   = this.ctx;
     const cfg   = this._config;
     const face  = cfg.face || 'classic';
@@ -229,9 +229,9 @@ class CrocodileClockDrawer {
       case 'neon':      this._faceNeon(r, accent, text);      break;
       case 'retro':     this._faceRetro(r, accent, text);     break;
       case 'sport':     this._faceSport(r, accent, text);     break;
-      case 'compass':   this._faceCompass(r, accent, text);   break;
       case 'art_deco':  this._faceArtDeco(r, accent, text);   break;
       case 'celestial': this._faceCelestial(r, accent, text); break;
+      case 'stargate':  this._faceStargate(r, accent, text, h, m, s); break;
       default:          this._faceClassic(r, accent, text);   break;
     }
   }
@@ -507,10 +507,6 @@ class CrocodileClockDrawer {
       ctx.font = `500 ${r * 0.128}px 'Times New Roman', Georgia, serif`;
       ctx.fillText(String(i), Math.cos(a) * r * 0.665, Math.sin(a) * r * 0.665);
     }
-    // Manufacturer-style text in centre
-    ctx.fillStyle = 'rgba(212,168,83,0.22)';
-    ctx.font = `400 ${r * 0.055}px 'Times New Roman', Georgia, serif`;
-    ctx.fillText('AUTOMATIC', 0, r * 0.32);
   }
 
   // ── Sport ─────────────────────────────────────────────────────────
@@ -555,51 +551,6 @@ class CrocodileClockDrawer {
       const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
       ctx.font = `900 ${r * 0.158}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif`;
       ctx.fillText(String(n), Math.cos(a) * r * 0.615, Math.sin(a) * r * 0.615);
-    });
-  }
-
-  // ── Compass ───────────────────────────────────────────────────────
-  _faceCompass(r, accent, text) {
-    const ctx = this.ctx;
-
-    // Reference rings
-    [0.76, 0.56].forEach(rf => {
-      ctx.beginPath(); ctx.arc(0, 0, r * rf, 0, 2 * Math.PI);
-      ctx.strokeStyle = 'rgba(255,255,255,0.06)'; ctx.lineWidth = 0.7; ctx.stroke();
-    });
-    // Degree-style minute ticks
-    for (let i = 0; i < 60; i++) {
-      if (i % 5 === 0) continue;
-      const a = (i / 60) * 2 * Math.PI - Math.PI / 2;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * r * 0.89, Math.sin(a) * r * 0.89);
-      ctx.lineTo(Math.cos(a) * r * 0.925, Math.sin(a) * r * 0.925);
-      ctx.strokeStyle = 'rgba(255,255,255,0.20)'; ctx.lineWidth = 0.6; ctx.lineCap = 'butt'; ctx.stroke();
-    }
-    // Cardinal hour ticks
-    for (let i = 0; i < 12; i++) {
-      const a    = (i / 12) * 2 * Math.PI - Math.PI / 2;
-      const isC  = i % 3 === 0;
-      ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * r * (isC ? 0.795 : 0.845), Math.sin(a) * r * (isC ? 0.795 : 0.845));
-      ctx.lineTo(Math.cos(a) * r * 0.925, Math.sin(a) * r * 0.925);
-      ctx.strokeStyle = isC ? accent : 'rgba(255,255,255,0.40)';
-      ctx.lineWidth = isC ? 2.8 : 1.0; ctx.lineCap = 'round'; ctx.stroke();
-    }
-    // N / E / S / W labels
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    [['N', 0], ['E', 3], ['S', 6], ['W', 9]].forEach(([lbl, i]) => {
-      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
-      ctx.font = `800 ${r * 0.145}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif`;
-      ctx.fillStyle = lbl === 'N' ? accent : text;
-      ctx.fillText(lbl, Math.cos(a) * r * 0.630, Math.sin(a) * r * 0.630);
-    });
-    // Subtle intercardinal labels
-    ctx.fillStyle = 'rgba(255,255,255,0.28)';
-    ctx.font = `600 ${r * 0.075}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif`;
-    [['NE', 1.5], ['SE', 4.5], ['SW', 7.5], ['NW', 10.5]].forEach(([lbl, i]) => {
-      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
-      ctx.fillText(lbl, Math.cos(a) * r * 0.680, Math.sin(a) * r * 0.680);
     });
   }
 
@@ -709,14 +660,6 @@ class CrocodileClockDrawer {
     ctx.font = `700 ${r * 0.142}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', monospace`;
     ctx.fillText('12', 0, -r * 0.632);
     ctx.restore();
-    // 3, 6, 9 subtle
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.font = `500 ${r * 0.095}px -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif`;
-    [[3, 3], [6, 6], [9, 9]].forEach(([n, i]) => {
-      const a = (i / 12) * 2 * Math.PI - Math.PI / 2;
-      ctx.fillText(String(n), Math.cos(a) * r * 0.635, Math.sin(a) * r * 0.635);
-    });
   }
 
   /** Helper: draw a star polygon path (does not fill — caller fills) */
@@ -729,6 +672,168 @@ class CrocodileClockDrawer {
       else         ctx.lineTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
     }
     ctx.closePath();
+  }
+
+  // ── Stargate ──────────────────────────────────────────────────────
+  _faceStargate(r, accent, text, h, m, s) {
+    const ctx  = this.ctx;
+    const now  = Date.now();
+    const isOnTheHour = (m === 0 && s < 4);
+
+    // ── Animated ripple state (stored on the drawer instance) ─────
+    if (!this._sg) {
+      this._sg = {
+        ripples: [],
+        lastRippleTime: 0,
+        swoosh: null,
+        lastSwooshTime: 0,
+        hourFlash: 0,
+      };
+    }
+    const sg = this._sg;
+
+    // Spawn a new ripple every ~2.4 seconds (staggered)
+    if (now - sg.lastRippleTime > 2400) {
+      sg.ripples.push({ born: now, maxR: r * (0.30 + Math.random() * 0.55) });
+      sg.lastRippleTime = now;
+    }
+    // Trim old ripples
+    sg.ripples = sg.ripples.filter(rp => now - rp.born < 1600);
+
+    // Spawn swoosh every 8–14 seconds
+    if (!sg.swoosh && now - sg.lastSwooshTime > 8000 + Math.random() * 6000) {
+      sg.swoosh = { born: now, angle: Math.random() * Math.PI * 2 };
+      sg.lastSwooshTime = now;
+    }
+    if (sg.swoosh && now - sg.swoosh.born > 900) sg.swoosh = null;
+
+    // Hour flash
+    if (isOnTheHour && now - sg.hourFlash > 5000) sg.hourFlash = now;
+
+    // ── Kawoosh water-gate base ───────────────────────────────────
+    // Deep teal/blue portal core gradient
+    const portalGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, r * 0.88);
+    portalGrad.addColorStop(0,   'rgba(0,180,210,0.12)');
+    portalGrad.addColorStop(0.4, 'rgba(0,120,200,0.22)');
+    portalGrad.addColorStop(0.75,'rgba(0,60,160,0.32)');
+    portalGrad.addColorStop(1,   'rgba(0,20,80,0.55)');
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.88, 0, Math.PI * 2);
+    ctx.fillStyle = portalGrad; ctx.fill();
+    ctx.restore();
+
+    // ── Animated ripple rings ─────────────────────────────────────
+    sg.ripples.forEach(rp => {
+      const age  = (now - rp.born) / 1600;  // 0→1
+      const curR = rp.maxR * age;
+      const alpha = 0.55 * (1 - age);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(0, 0, curR, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(80,200,255,${alpha})`;
+      ctx.lineWidth   = (1 - age) * 3.5 + 0.5;
+      ctx.stroke();
+      // Inner bright ring at crest
+      ctx.beginPath(); ctx.arc(0, 0, curR * 0.88, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(160,230,255,${alpha * 0.5})`;
+      ctx.lineWidth   = 0.8;
+      ctx.stroke();
+      ctx.restore();
+    });
+
+    // ── Swoosh arc ────────────────────────────────────────────────
+    if (sg.swoosh) {
+      const age    = (now - sg.swoosh.born) / 900;
+      const ang    = sg.swoosh.angle;
+      const span   = Math.PI * 0.55 * age;
+      const alpha  = age < 0.5 ? age * 2 : 2 - age * 2;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 0.62, ang - span, ang + span);
+      ctx.strokeStyle = `rgba(120,220,255,${alpha * 0.8})`;
+      ctx.lineWidth   = 5 * (1 - age * 0.6);
+      ctx.lineCap     = 'round';
+      ctx.shadowColor = 'rgba(0,200,255,0.9)';
+      ctx.shadowBlur  = 14;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // ── Outer event-horizon shimmer ring ──────────────────────────
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.88, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(0,180,255,0.55)';
+    ctx.lineWidth   = 2.2;
+    ctx.shadowColor = 'rgba(0,200,255,0.8)';
+    ctx.shadowBlur  = 16;
+    ctx.stroke();
+    ctx.restore();
+
+    // ── Nine Chevrons (Stargate-style) ────────────────────────────
+    const chevronOnHour = isOnTheHour && now - sg.hourFlash < 2500;
+    const CHEVRONS = 9;
+    for (let i = 0; i < CHEVRONS; i++) {
+      const a   = (i / CHEVRONS) * Math.PI * 2 - Math.PI / 2;
+      const cx  = Math.cos(a) * r * 0.88;
+      const cy  = Math.sin(a) * r * 0.88;
+      const lit = chevronOnHour;
+      // Determine if this chevron lights up sequentially on the hour
+      const seqDelay = chevronOnHour ? i * 200 : 0;
+      const seqLit   = chevronOnHour && (now - sg.hourFlash) > seqDelay && (now - sg.hourFlash) < seqDelay + 1800;
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(a + Math.PI / 2);
+
+      const chevW = r * 0.075;
+      const chevH = r * 0.115;
+
+      // Chevron body
+      ctx.beginPath();
+      ctx.moveTo(0,           -chevH * 0.5);
+      ctx.lineTo( chevW * 0.5, chevH * 0.5);
+      ctx.lineTo( chevW * 0.25, chevH * 0.28);
+      ctx.lineTo(0,            chevH * 0.05);
+      ctx.lineTo(-chevW * 0.25, chevH * 0.28);
+      ctx.lineTo(-chevW * 0.5, chevH * 0.5);
+      ctx.closePath();
+
+      if (seqLit) {
+        ctx.fillStyle   = '#FF2222';
+        ctx.shadowColor = 'rgba(255,0,0,0.9)';
+        ctx.shadowBlur  = 18;
+      } else {
+        ctx.fillStyle   = 'rgba(180,220,255,0.70)';
+        ctx.shadowColor = 'rgba(0,180,255,0.6)';
+        ctx.shadowBlur  = 8;
+      }
+      ctx.fill();
+
+      // Chevron inner highlight notch
+      ctx.beginPath();
+      ctx.moveTo(0,            -chevH * 0.28);
+      ctx.lineTo( chevW * 0.22, chevH * 0.22);
+      ctx.lineTo(0,             chevH * 0.02);
+      ctx.lineTo(-chevW * 0.22, chevH * 0.22);
+      ctx.closePath();
+      ctx.fillStyle = seqLit ? 'rgba(255,160,160,0.55)' : 'rgba(255,255,255,0.28)';
+      ctx.shadowBlur = 0;
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // ── Outer DHD address ring (minute tick marks) ─────────────────
+    for (let i = 0; i < 60; i++) {
+      if (i % 5 === 0) continue;
+      const a = (i / 60) * 2 * Math.PI - Math.PI / 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * r * 0.92, Math.sin(a) * r * 0.92);
+      ctx.lineTo(Math.cos(a) * r * 0.96, Math.sin(a) * r * 0.96);
+      ctx.strokeStyle = 'rgba(0,180,255,0.22)';
+      ctx.lineWidth   = 0.7;
+      ctx.lineCap     = 'butt';
+      ctx.stroke();
+    }
   }
 
   // ── Hands ─────────────────────────────────────────────────────────
@@ -744,8 +849,8 @@ class CrocodileClockDrawer {
     const minAngle  = ((m + s / 60) / 60) * 2 * Math.PI;
 
     const isLuxury   = face === 'luxury'   || face === 'art_deco';
-    const isNeon     = face === 'neon'     || face === 'celestial';
-    const isMinimal  = face === 'minimal'  || face === 'compass';
+    const isNeon     = face === 'neon'     || face === 'celestial' || face === 'stargate';
+    const isMinimal  = face === 'minimal';
 
     if (isNeon) {
       this._handNeon(r, hourAngle, r * 0.50, r * 0.060, hCol);
@@ -1553,7 +1658,7 @@ class CrocodileClockCardEditor extends HTMLElement {
               <label>URL</label>
               <div class="hint" style="margin-bottom:8px;">Opens as a link at the bottom of the popup calendar. Leave blank to disable. Use <b>calshow://</b> to open the iOS Calendar app.</div>
               <input type="text" id="cc_popup_url"
-                placeholder="https://example.com or calshow://"
+                placeholder="calshow://"
                 value="${cfg.popup_url || ''}">
             </div>
             <div class="select-row" style="margin-top:10px;">
@@ -1710,6 +1815,6 @@ if (!window.customCards.some(c => c.type === 'crocodile-clock-card')) {
     type:        'crocodile-clock-card',
     name:        'Crocodile Clock Card',
     preview:     false,
-    description: 'Beautiful analog clock with twelve faces, smooth or mechanical tick seconds, and a glassmorphic popup with digital clock and interactive calendar.',
+    description: 'Beautiful analog clock with twelve faces including the animated Stargate portal, smooth or mechanical tick seconds, and a glassmorphic popup with digital clock and interactive calendar.',
   });
 }
