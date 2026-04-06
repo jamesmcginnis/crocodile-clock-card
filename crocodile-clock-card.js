@@ -8,7 +8,7 @@
  * Author:     James McGinnis
  */
 
-const CC_VERSION = '1.5.0';
+const CC_VERSION = '1.6.0';
 
 // ── Canvas roundRect polyfill ─────────────────────────────────────
 (function () {
@@ -724,10 +724,14 @@ class CrocodileClockCard extends HTMLElement {
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-  // Return current time parts in the configured timezone (or browser local time).
+  // Return current time parts in the correct timezone.
+  // Priority: 1) manual timezone from config, 2) HA server timezone (hass.config.time_zone), 3) browser local
   _haTimeParts() {
-    const now = new Date();
-    const tz  = (this._config?.timezone || '').trim();
+    const now      = new Date();
+    const manualTz = (this._config?.timezone || '').trim();
+    const haTz     = this._hass?.config?.time_zone || '';
+    const tz       = manualTz || haTz;
+
     if (tz) {
       try {
         // Cache the formatter — reconstructing every frame (60fps) is wasteful
@@ -750,10 +754,11 @@ class CrocodileClockCard extends HTMLElement {
         const s = parseInt(parts.second, 10);
         return { h, m, s, ms: now.getMilliseconds() };
       } catch (e) {
-        console.warn('[CrocodileClockCard] Invalid timezone:', tz, e);
+        console.warn('[CrocodileClockCard] Invalid timezone "' + tz + '":', e.message);
         this._tzFmt = null;
       }
     }
+    // Final fallback: browser local time
     return {
       h:  now.getHours(),
       m:  now.getMinutes(),
@@ -1241,8 +1246,9 @@ class CrocodileClockCardEditor extends HTMLElement {
             <div class="select-row">
               <label>IANA Timezone</label>
               <div class="hint" style="margin-bottom:8px;">
-                Enter a timezone name such as <b>Europe/London</b>, <b>America/New_York</b>, or <b>Asia/Tokyo</b>.
-                Leave blank to use your browser's local time.
+                Optional override. By default the clock uses your Home Assistant server timezone automatically.
+                Only set this if you want to display a <em>different</em> timezone — e.g. <b>America/New_York</b> or <b>Asia/Tokyo</b>.
+                Must be a valid IANA name (e.g. <b>Europe/London</b>, not <em>London</em>).
               </div>
               <input type="text" id="cc_timezone"
                 placeholder="e.g. Europe/London"
