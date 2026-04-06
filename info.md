@@ -1,10 +1,10 @@
 # Crocodile Clock Card
 
-A customisable analog clock card for Home Assistant Lovelace dashboards. Choose from seven clock faces, configure a smooth sweep or snappy mechanical tick second hand, and tap the clock to reveal a glassmorphic popup with a large digital clock and interactive calendar.
+A customisable analog clock card for Home Assistant Lovelace dashboards. Choose from seven clock faces, configure a smooth sweep or snappy mechanical tick second hand, and tap the clock to reveal a glassmorphic popup with a large digital clock, interactive calendar, and optional link.
 
 ## Clock faces
 
-Seven distinct faces are available: **Classic** (Arabic numerals), **Minimal** (dot indices, clean stick hands), **Roman** (Roman numeral dial), **Modern** (bold quarter numerals with accent tick marks), **Luxury** (baton indices with highlighted baton hands), **Skeleton** (diamond markers with structural rings), and **Neon** (glowing accent-coloured elements with canvas glow effects).
+Seven distinct faces are available: **Classic** (Arabic numerals), **Minimal** (dot indices, clean stick hands), **Roman** (Roman numeral dial), **Modern** (bold quarter numerals with accent tick marks), **Luxury** (gold baton indices with highlighted baton hands), **Skeleton** (diamond markers with structural rings), and **Neon** (glowing accent-coloured elements with canvas glow effects).
 
 Select a face in the visual editor — it takes effect immediately with no page reload needed.
 
@@ -28,11 +28,11 @@ Seven colour pickers give full control over the look of the card:
 
 ## Tap popup
 
-Tapping the clock opens a glassmorphic overlay with a large digital time display in either 12-hour or 24-hour format, the full current date, and an interactive monthly calendar. Navigate between months with the arrow buttons or jump back to the current month with the **Today** button. The current day is highlighted with the accent colour. Close the popup by tapping the × button or pressing Escape.
+Tapping the clock opens a glassmorphic overlay with a large digital time display in either 12-hour or 24-hour format, the full current date, and an interactive monthly calendar. Navigate between months with the arrow buttons or jump back to the current month with the **Today** button. The current day is highlighted with the accent colour. If a URL is configured, a styled link button appears at the bottom of the popup. Close by tapping the × button or pressing Escape.
 
 ## Display options
 
-An optional **date display** can be shown below the clock face on the card itself. An optional **title** can be shown above the clock.
+An optional **date display** can be shown below the clock face on the card itself.
 
 ## Visual editor
 
