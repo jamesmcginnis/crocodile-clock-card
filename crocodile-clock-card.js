@@ -8,7 +8,7 @@
  * Author:     James McGinnis
  */
 
-const CC_VERSION = '1.2.0';
+const CC_VERSION = '1.3.0';
 
 // ── Canvas roundRect polyfill ─────────────────────────────────────
 (function () {
@@ -370,13 +370,6 @@ class CrocodileClockDrawer {
       ctx.fill();
       ctx.restore();
     }
-    // Brand text
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillStyle = 'rgba(201,168,76,0.62)';
-    ctx.font = `400 ${r * 0.068}px 'Times New Roman', Georgia, serif`;
-    ctx.fillText('CROCODILE', 0, -r * 0.30);
-    ctx.font = `300 ${r * 0.048}px 'Times New Roman', Georgia, serif`;
-    ctx.fillText('AUTOMATIC', 0, -r * 0.195);
   }
 
   // ── Skeleton ──────────────────────────────────────────────────────
@@ -621,7 +614,7 @@ class CrocodileClockCard extends HTMLElement {
       second_hand_color: '#FF3B30',
       accent_color:      '#007AFF',
       show_date:         false,
-      title:             '',
+      popup_url:         '',
     };
   }
 
@@ -659,7 +652,6 @@ class CrocodileClockCard extends HTMLElement {
 
     const cfg   = this._config;
     const bg    = this._resolveBg();
-    const title = cfg.title || '';
 
     this.shadowRoot.innerHTML = `
       <style>
@@ -682,14 +674,6 @@ class CrocodileClockCard extends HTMLElement {
           padding: 20px 16px 16px;
           gap: 10px;
         }
-        .cc-title {
-          font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
-          font-size: 11px;
-          font-weight: 700;
-          text-transform: uppercase;
-          letter-spacing: 0.12em;
-          color: rgba(255,255,255,0.45);
-        }
         canvas { display:block; border-radius:50%; }
         .cc-date {
           font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', sans-serif;
@@ -707,7 +691,6 @@ class CrocodileClockCard extends HTMLElement {
       </style>
       <ha-card>
         <div class="cc-wrap">
-          ${title ? `<div class="cc-title">${title}</div>` : ''}
           <canvas id="cc-canvas"></canvas>
           ${cfg.show_date ? `<div class="cc-date" id="cc-date-el"></div>` : ''}
         </div>
@@ -1055,6 +1038,48 @@ class CrocodileClockCard extends HTMLElement {
 
     buildCalendar();
 
+    // ── Optional URL link ──
+    const popupUrl = (cfg.popup_url || '').trim();
+    let urlEl = null;
+    if (popupUrl) {
+      urlEl = document.createElement('a');
+      urlEl.href   = popupUrl;
+      urlEl.target = '_blank';
+      urlEl.rel    = 'noopener noreferrer';
+      Object.assign(urlEl.style, {
+        display:        'flex',
+        alignItems:     'center',
+        justifyContent: 'center',
+        gap:            '7px',
+        marginTop:      '20px',
+        padding:        '11px 18px',
+        borderRadius:   '12px',
+        background:     `${accent}18`,
+        border:         `1px solid ${accent}44`,
+        color:          accent,
+        fontSize:       '13px',
+        fontWeight:     '600',
+        textDecoration: 'none',
+        letterSpacing:  '0.01em',
+        transition:     'background 0.15s',
+        wordBreak:      'break-all',
+      });
+      urlEl.addEventListener('mouseover', () => urlEl.style.background = `${accent}28`);
+      urlEl.addEventListener('mouseout',  () => urlEl.style.background = `${accent}18`);
+      // Icon + label
+      const linkIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+      linkIcon.setAttribute('viewBox', '0 0 24 24');
+      linkIcon.setAttribute('width', '15');
+      linkIcon.setAttribute('height', '15');
+      linkIcon.setAttribute('fill', 'currentColor');
+      linkIcon.innerHTML = '<path d="M19 19H5V5h7V3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/>';
+      // Shorten display label to hostname if long
+      let displayUrl = popupUrl;
+      try { displayUrl = new URL(popupUrl).hostname || popupUrl; } catch (_) {}
+      urlEl.appendChild(linkIcon);
+      urlEl.appendChild(document.createTextNode(displayUrl));
+    }
+
     // ── Assemble ──
     panel.appendChild(closeBtn);
     panel.appendChild(timeEl);
@@ -1062,6 +1087,7 @@ class CrocodileClockCard extends HTMLElement {
     panel.appendChild(fullDateEl);
     panel.appendChild(divider);
     panel.appendChild(calWrap);
+    if (urlEl) panel.appendChild(urlEl);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
 
@@ -1140,7 +1166,7 @@ class CrocodileClockCardEditor extends HTMLElement {
             <div class="select-row" style="border-top:1px solid var(--divider-color,rgba(0,0,0,0.06));">
               <label>Movement Style</label>
               <div class="hint" style="margin-bottom:8px;">
-                <b>Smooth</b> — Continuous sweep like a luxury automatic watch. &nbsp;
+                <b>Smooth</b> — Continuous sweep like a high-end luxury watch. &nbsp;
                 <b>Tick</b> — Each second jumps forward with a mechanical overshoot that snaps back, giving a genuine clockwork feel.
               </div>
               <div class="segmented">
@@ -1220,17 +1246,19 @@ class CrocodileClockCardEditor extends HTMLElement {
           </div>
         </div>
 
-        <!-- ── Title ── -->
+        <!-- ── Popup URL ── -->
         <div>
           <div class="section-title">
-            Card Title
+            Popup Link
             <span style="font-weight:400;text-transform:none;letter-spacing:0;opacity:0.6;"> — optional</span>
           </div>
           <div class="card-block">
             <div class="select-row">
-              <input type="text" id="cc_title"
-                placeholder="e.g. Living Room, Kitchen…"
-                value="${cfg.title || ''}">
+              <label>URL</label>
+              <div class="hint" style="margin-bottom:8px;">Opens as a link at the bottom of the popup calendar. Leave blank to disable.</div>
+              <input type="text" id="cc_popup_url"
+                placeholder="https://example.com"
+                value="${cfg.popup_url || ''}">
             </div>
           </div>
         </div>
@@ -1290,9 +1318,11 @@ class CrocodileClockCardEditor extends HTMLElement {
     root.querySelectorAll('input[name="cc_secs"]').forEach(r => r.onchange = () => this._set('seconds_style', r.value));
     root.querySelectorAll('input[name="cc_pfmt"]').forEach(r => r.onchange = () => this._set('popup_format', r.value));
 
-    // Title
-    const titleEl = root.getElementById('cc_title');
-    if (titleEl) titleEl.oninput = () => this._set('title', titleEl.value);
+    // Title removed
+
+    // Popup URL
+    const urlInputEl = root.getElementById('cc_popup_url');
+    if (urlInputEl) urlInputEl.oninput = () => this._set('popup_url', urlInputEl.value);
 
     // Opacity slider
     const opEl  = root.getElementById('cc_card_opacity');
