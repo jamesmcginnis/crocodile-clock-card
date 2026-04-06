@@ -906,125 +906,244 @@ class CrocodileClockDrawer {
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 4 — Portal: the "puddle" event horizon
-    // Deep iridescent blue-white shimmer that looks like liquid mercury
+    // STEP 4 — Portal: high-fidelity standing-wave puddle
+    //
+    // The Stargate event horizon is a VERTICAL wall of liquid —
+    // silver-blue mercury-like fluid with concentric standing waves
+    // that ripple outward from centre. The palette is:
+    //   • Near-black void between wave crests
+    //   • Bright silver-white at crest peaks (light catching the wave lip)
+    //   • Iridescent cyan-blue mid-tones in the troughs
+    //   • Bright white blow-out at the central origin
+    // Occasional "kawoosh" burst: on every new minute a fast
+    // outward wave-burst fires from centre.
     // ═══════════════════════════════════════════════════════════════
     ctx.save();
     ctx.beginPath(); ctx.arc(0, 0, rPortal, 0, Math.PI * 2); ctx.clip();
 
-    // Base deep space blue-black
-    ctx.fillStyle = '#010a14';
-    ctx.fillRect(-r, -r, r * 2, r * 2);
-
-    // Animated shimmer base — slow undulating radial gradient
-    const shimA  = Math.sin(T * 0.7) * 0.5 + 0.5;   // 0→1
-    const shimB  = Math.sin(T * 1.1 + 1.4) * 0.5 + 0.5;
-    const coreR  = rPortal * (0.18 + shimA * 0.12);
-    const portalFill = ctx.createRadialGradient(
-      Math.cos(T * 0.4) * rPortal * 0.08, Math.sin(T * 0.4) * rPortal * 0.08, 0,
-      0, 0, rPortal
-    );
-    portalFill.addColorStop(0,    `rgba(200,240,255,${0.55 + shimA * 0.25})`);
-    portalFill.addColorStop(0.12, `rgba(120,210,255,${0.50 + shimB * 0.18})`);
-    portalFill.addColorStop(0.30, `rgba(30,130,220,${0.60})`);
-    portalFill.addColorStop(0.55, `rgba(8,60,160,0.75)`);
-    portalFill.addColorStop(0.78, `rgba(2,20,80,0.88)`);
-    portalFill.addColorStop(1,    `rgba(0,5,30,1)`);
-    ctx.fillStyle = portalFill;
+    // ── 1. Black void base ────────────────────────────────────────
+    ctx.fillStyle = '#000508';
     ctx.fillRect(-rPortal, -rPortal, rPortal * 2, rPortal * 2);
 
-    // Caustic light bands — the characteristic watery shimmer
-    // Layered semi-transparent arcs that shift with time
-    for (let band = 0; band < 7; band++) {
-      const bT    = T * (0.28 + band * 0.07) + band * 1.1;
-      const bOff  = Math.sin(bT) * rPortal * 0.22;
-      const bR    = rPortal * (0.08 + band * 0.11);
-      const bA    = 0.06 + Math.sin(bT * 1.3) * 0.04;
-      const bX    = Math.cos(bT * 0.5) * rPortal * 0.15;
-      const bY    = Math.sin(bT * 0.7) * rPortal * 0.12;
-      const bandG = ctx.createRadialGradient(bX, bY + bOff * 0.3, 0, bX, bY, bR + rPortal * 0.18);
-      bandG.addColorStop(0,   `rgba(180,235,255,${bA * 1.8})`);
-      bandG.addColorStop(0.4, `rgba(100,190,255,${bA})`);
-      bandG.addColorStop(1,   `rgba(20,80,200,0)`);
-      ctx.fillStyle = bandG;
-      ctx.fillRect(-rPortal, -rPortal, rPortal * 2, rPortal * 2);
+    // ── 2. Deep radial colour wash (the "depth" of the portal) ────
+    // Slow-breathing radial that shifts between deep cobalt and black
+    const breathe  = Math.sin(T * 0.55) * 0.5 + 0.5;   // 0→1, ~11 s cycle
+    const breathe2 = Math.sin(T * 0.38 + 1.2) * 0.5 + 0.5;
+    const depthGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, rPortal);
+    depthGrad.addColorStop(0,    `rgba(15,55,110,${0.55 + breathe * 0.20})`);
+    depthGrad.addColorStop(0.22, `rgba(8,35,80,${0.70 + breathe2 * 0.12})`);
+    depthGrad.addColorStop(0.50, `rgba(3,12,35,0.82)`);
+    depthGrad.addColorStop(0.80, `rgba(1,4,14,0.92)`);
+    depthGrad.addColorStop(1,    'rgba(0,1,6,1)');
+    ctx.fillStyle = depthGrad;
+    ctx.fillRect(-rPortal, -rPortal, rPortal * 2, rPortal * 2);
+
+    // ── 3. STANDING WAVE RINGS — the heart of the puddle ──────────
+    // The show's puddle has ~6-8 visible concentric wave crests that
+    // are always present (standing waves), slowly drifting outward.
+    // Each "band" oscillates between trough (dark) and crest (bright).
+    // We render this by drawing filled annular bands, alternating dark/bright.
+    //
+    // Wave phase drifts slowly outward over time — gives the illusion
+    // of continuous outward propagation even without discrete ripples.
+    const waveSpeed    = 0.18;   // rings drift outward slowly (units: normalised radius/sec)
+    const wavePhase    = (T * waveSpeed) % 1.0;  // 0→1 continuous drift
+    const NUM_WAVES    = 9;      // number of concentric wave bands to render
+    const waveMaxR     = rPortal * 0.97;
+
+    for (let w = 0; w < NUM_WAVES; w++) {
+      // Each wave band sits at a specific normalised radius, offset by drift phase
+      const normR      = ((w / NUM_WAVES) + wavePhase) % 1.0;
+      const wR         = normR * waveMaxR;
+      // Width of each band — narrower at edge (perspective foreshortening)
+      const bandFrac   = (1.0 / NUM_WAVES) * waveMaxR;
+      const innerR     = Math.max(0, wR - bandFrac * 0.5);
+      const outerR     = wR + bandFrac * 0.5;
+
+      // Brightness: waves near centre are brighter (light source behind gate)
+      // Crest brightness also pulses with a secondary oscillation
+      const centreFade = 1 - Math.pow(normR, 1.4);   // bright at centre, dark at edge
+      const crestPulse = Math.sin(normR * Math.PI * 2 - T * 1.8 + w * 0.7) * 0.5 + 0.5;
+
+      // The crest (outermost part of each band) is bright silver-white
+      // The trough (inner part of each band) is deep blue-black
+      const crestAlpha = (0.18 + crestPulse * 0.55) * centreFade;
+      const troughAlpha = (0.35 + (1 - crestPulse) * 0.25) * centreFade;
+
+      if (innerR >= outerR || outerR <= 0) continue;
+
+      // Trough fill (dark, inner part of band)
+      const troughG = ctx.createRadialGradient(0, 0, innerR, 0, 0, outerR);
+      troughG.addColorStop(0,   `rgba(0,6,20,${troughAlpha})`);
+      troughG.addColorStop(0.5, `rgba(2,15,50,${troughAlpha * 0.6})`);
+      troughG.addColorStop(1,   `rgba(0,0,0,0)`);
+      ctx.fillStyle = troughG;
+      ctx.beginPath();
+      ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+      if (innerR > 0) { ctx.arc(0, 0, innerR, 0, Math.PI * 2, true); }
+      ctx.fill('evenodd');
+
+      // Crest stroke — the bright silver lip at the top of each wave
+      // This is the most characteristic feature: sharp bright ring on dark bg
+      const crestR = outerR * 0.995;
+      if (crestR > 0.5) {
+        ctx.save();
+        ctx.beginPath(); ctx.arc(0, 0, crestR, 0, Math.PI * 2);
+        // Main bright crest line
+        ctx.strokeStyle = `rgba(200,230,255,${crestAlpha * 1.0})`;
+        ctx.lineWidth   = Math.max(0.4, (1.2 + centreFade * 1.8) * (0.5 + crestPulse * 0.5));
+        ctx.shadowColor = `rgba(140,210,255,${crestAlpha * 0.8})`;
+        ctx.shadowBlur  = 3 + centreFade * 6;
+        ctx.stroke();
+        // Secondary soft glow halo just inside the crest
+        ctx.beginPath(); ctx.arc(0, 0, crestR * 0.97, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(100,180,255,${crestAlpha * 0.45})`;
+        ctx.lineWidth   = 1.0 + centreFade * 1.2;
+        ctx.shadowBlur  = 0;
+        ctx.stroke();
+        ctx.restore();
+      }
     }
 
-    // ── Puddle ripples — the key water-gate effect ─────────────────
-    // Each ripple is NOT a simple circle. It's drawn as multiple
-    // concentric ellipses with slight X-compression (viewed in perspective)
-    // to mimic a horizontal puddle seen from slight angle.
-    const RIPPLE_PERSPECTIVE = 0.82; // y-scale to give puddle-perspective feel
-
+    // ── 4. DISCRETE OUTWARD RIPPLES (triggered events) ────────────
+    // These fire on top of the standing waves. Each is a fast-moving
+    // ring that expands from centre — brighter and thicker than the
+    // ambient standing waves, representing an energy pulse.
     sg.ripples.forEach(rp => {
       if (now < rp.born) return;
-      const age  = (now - rp.born) / 2800; // 0→1
+      const life = 2200;
+      const age  = (now - rp.born) / life;
       if (age > 1) return;
-      const t    = age;
-      // Radius expands with eased curve — fast at start, slows at edge
-      const eased = 1 - Math.pow(1 - t, 1.6);
-      const curR  = eased * rPortal * 0.96;
-      const fade  = rp.opacity * (1 - Math.pow(t, 1.2));
 
-      // Draw 3 sub-rings per ripple for the "thick crest" look
-      for (let sub = 0; sub < 3; sub++) {
-        const subR   = curR * (1 - sub * 0.022);
-        const subAlpha = fade * (sub === 1 ? 1.0 : 0.55);
-        const lw     = (1 - t) * (sub === 1 ? 2.8 : 1.2) + 0.3;
+      // Fast initial expansion that eases off — matches the show's kawoosh physics
+      // The wave front accelerates then decelerates as it hits the edge
+      const eased = age < 0.3
+        ? (age / 0.3) * 0.55                              // fast initial burst
+        : 0.55 + (1 - Math.pow(1 - (age - 0.3) / 0.7, 2.2)) * 0.45; // ease to edge
+      const wR    = eased * rPortal * 0.97;
+      const fade  = rp.opacity * Math.pow(1 - age, 0.7); // stays bright longer, sharp fade at end
 
+      // Each discrete ripple has 5 sub-rings: shadow-trough, main crest, inner crest, glow halo, outer shadow
+      const rings = [
+        // [radiusMult, lineWidth, r,   g,   b,   alpha_mult, blur]
+        [1.030,  1.8, 0,   0,   0,   0.90, 0],   // leading shadow (dark void)
+        [1.012,  2.4, 220, 240, 255, 1.00, 6],   // main crest (bright silver-white)
+        [1.000,  1.4, 180, 220, 255, 0.80, 3],   // second crest line
+        [0.988,  0.9, 100, 180, 255, 0.55, 2],   // inner glow
+        [0.970,  1.2, 0,   0,   0,   0.65, 0],   // trailing trough shadow
+      ];
+
+      rings.forEach(([rm, lw, rc, gc, bc, am, blur]) => {
+        const ringR = wR * rm;
+        if (ringR < 0.5 || ringR > rPortal * 1.02) return;
         ctx.save();
-        ctx.scale(1, RIPPLE_PERSPECTIVE);
+        ctx.beginPath(); ctx.arc(0, 0, ringR, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(${rc},${gc},${bc},${fade * am})`;
+        ctx.lineWidth   = lw * (0.5 + (1 - age) * 0.8);
+        if (blur > 0) { ctx.shadowColor = `rgba(${rc},${gc},${bc},${fade * am * 0.6})`; ctx.shadowBlur = blur; }
+        ctx.stroke();
+        ctx.restore();
+      });
+    });
+
+    // ── 5. KAWOOSH BURST — initial energy splash at centre ────────
+    // On each minute transition: a bright radial energy burst erupts
+    // from the centre outward over ~0.4 s before the ripple waves start.
+    sg.swooshes.forEach(sw => {
+      const burstLife = 1400;
+      const age  = (now - sw.born) / burstLife;
+      if (age > 1) return;
+
+      // Phase 1 (0→0.3): blinding white centre flash
+      // Phase 2 (0.3→0.7): the "kawoosh" arm sweeps outward  
+      // Phase 3 (0.7→1.0): fades to leave ripples
+      if (age < 0.35) {
+        // Central flash — bright white-cyan blowout
+        const flashAge = age / 0.35;
+        const flashR   = rPortal * (0.08 + flashAge * 0.55);
+        const flashA   = (1 - flashAge) * 0.92;
+        const fg = ctx.createRadialGradient(0, 0, 0, 0, 0, flashR);
+        fg.addColorStop(0,    `rgba(255,255,255,${flashA})`);
+        fg.addColorStop(0.25, `rgba(220,245,255,${flashA * 0.85})`);
+        fg.addColorStop(0.60, `rgba(100,200,255,${flashA * 0.45})`);
+        fg.addColorStop(1,    'rgba(20,80,200,0)');
+        ctx.fillStyle = fg;
+        ctx.fillRect(-rPortal, -rPortal, rPortal * 2, rPortal * 2);
+      } else {
+        // Kawoosh arm — a rotating energy arc that sweeps outward
+        const armAge   = (age - 0.35) / 0.65;
+        const armFade  = Math.pow(1 - armAge, 1.4);
+        const armR     = rPortal * (0.30 + armAge * 0.68);
+        const armSpan  = Math.PI * (0.6 + armAge * 0.9);
+        const armAngle = sw.angle + sw.dir * armAge * Math.PI * 3.5;
+
+        // Glow arc
+        ctx.save();
         ctx.beginPath();
-        ctx.arc(0, 0, subR, 0, Math.PI * 2);
-        ctx.strokeStyle = sub === 1
-          ? `rgba(200,240,255,${subAlpha})`
-          : `rgba(100,190,255,${subAlpha * 0.7})`;
-        ctx.lineWidth = lw;
+        ctx.arc(0, 0, armR, armAngle, armAngle + sw.dir * armSpan);
+        ctx.strokeStyle = `rgba(180,235,255,${armFade * 0.65})`;
+        ctx.lineWidth   = (1 - armAge) * 9 + 2;
+        ctx.lineCap     = 'round';
+        ctx.shadowColor = `rgba(100,210,255,${armFade})`;
+        ctx.shadowBlur  = 18;
+        ctx.stroke();
+        // Bright crest on the arm
+        ctx.beginPath();
+        ctx.arc(0, 0, armR * 0.985, armAngle + sw.dir * 0.1, armAngle + sw.dir * (armSpan - 0.1));
+        ctx.strokeStyle = `rgba(240,250,255,${armFade * 0.80})`;
+        ctx.lineWidth   = (1 - armAge) * 3.5 + 0.5;
+        ctx.shadowBlur  = 8;
+        ctx.stroke();
+        // Secondary inner arc (trailing)
+        ctx.beginPath();
+        ctx.arc(0, 0, armR * 0.930, armAngle + sw.dir * 0.3, armAngle + sw.dir * (armSpan * 0.75));
+        ctx.strokeStyle = `rgba(80,180,255,${armFade * 0.40})`;
+        ctx.lineWidth   = (1 - armAge) * 4 + 1;
+        ctx.shadowBlur  = 5;
         ctx.stroke();
         ctx.restore();
       }
     });
 
-    // ── Swoosh — the fast energy vortex arc ───────────────────────
-    sg.swooshes.forEach(sw => {
-      const age  = (now - sw.born) / 1200;
-      if (age > 1) return;
-      // Arc sweeps around and fades
-      const sweep = Math.PI * 1.35 * Math.min(age * 2.2, 1);
-      const fade  = age < 0.4 ? age / 0.4 : 1 - (age - 0.4) / 0.6;
-      const sR1   = rPortal * 0.55;
-      const sR2   = rPortal * 0.72;
-      const start = sw.angle + sw.dir * age * Math.PI * 2.5;
-
-      // Outer arc
+    // ── 6. SURFACE IRIDESCENCE — moving light across the puddle ───
+    // Thin, fast-moving streaks of brighter light that drift across
+    // the surface, like light caustics on the back of a wave.
+    for (let streak = 0; streak < 5; streak++) {
+      const sPhase = T * (0.12 + streak * 0.07) + streak * 2.5;
+      const sNorm  = (sPhase % 1.0);
+      const sR     = sNorm * rPortal * 0.94;
+      const sA     = Math.sin(sNorm * Math.PI) * (0.08 + streak * 0.012);
+      if (sR < 1) continue;
       ctx.save();
-      ctx.scale(1, RIPPLE_PERSPECTIVE);
-      ctx.beginPath();
-      ctx.arc(0, 0, sR2, start, start + sw.dir * sweep);
-      ctx.strokeStyle = `rgba(160,230,255,${fade * 0.65})`;
-      ctx.lineWidth   = (1 - age) * 6 + 1;
-      ctx.lineCap     = 'round';
-      ctx.shadowColor = 'rgba(100,210,255,0.9)';
-      ctx.shadowBlur  = 12;
-      ctx.stroke();
-      // Inner arc (counter arc, slightly different phase)
-      ctx.beginPath();
-      ctx.arc(0, 0, sR1, start + sw.dir * 0.4, start + sw.dir * (sweep + 0.4));
-      ctx.strokeStyle = `rgba(220,248,255,${fade * 0.45})`;
-      ctx.lineWidth   = (1 - age) * 3.5 + 0.5;
+      ctx.beginPath(); ctx.arc(0, 0, sR, 0, Math.PI * 2);
+      ctx.strokeStyle = `rgba(180,225,255,${sA})`;
+      ctx.lineWidth   = 0.6 + streak * 0.2;
       ctx.stroke();
       ctx.restore();
-    });
+    }
 
-    // ── Bright centre core — the "open gate" brilliance ───────────
-    const coreAge  = Math.sin(T * 1.2) * 0.5 + 0.5;
-    const corePulse = 0.06 + coreAge * 0.05;
-    const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, rPortal * (corePulse + 0.08));
-    coreGrad.addColorStop(0,   `rgba(255,255,255,${0.60 + coreAge * 0.25})`);
-    coreGrad.addColorStop(0.35, `rgba(200,240,255,${0.30 + coreAge * 0.10})`);
-    coreGrad.addColorStop(1,   'rgba(100,180,255,0)');
+    // ── 7. CENTRAL ORIGIN GLOW — always-on white-hot centre ───────
+    // The gate's event horizon always has a persistently bright core
+    // that pulses gently — this is where the wormhole is "deepest"
+    const corePulse  = Math.sin(T * 1.35) * 0.5 + 0.5;
+    const coreRadius = rPortal * (0.055 + corePulse * 0.035);
+    const coreGrad   = ctx.createRadialGradient(0, 0, 0, 0, 0, rPortal * 0.38);
+    coreGrad.addColorStop(0,    `rgba(255,255,255,${0.75 + corePulse * 0.20})`);
+    coreGrad.addColorStop(0.08, `rgba(230,248,255,${0.55 + corePulse * 0.15})`);
+    coreGrad.addColorStop(0.22, `rgba(140,210,255,${0.30 + corePulse * 0.10})`);
+    coreGrad.addColorStop(0.55, `rgba(30,100,200,0.12)`);
+    coreGrad.addColorStop(1,    'rgba(0,10,40,0)');
     ctx.fillStyle = coreGrad;
     ctx.fillRect(-rPortal, -rPortal, rPortal * 2, rPortal * 2);
+
+    // Hard bright centre point
+    ctx.save();
+    ctx.beginPath(); ctx.arc(0, 0, coreRadius, 0, Math.PI * 2);
+    ctx.fillStyle   = `rgba(255,255,255,${0.70 + corePulse * 0.25})`;
+    ctx.shadowColor = 'rgba(180,230,255,0.95)';
+    ctx.shadowBlur  = 18;
+    ctx.fill();
+    ctx.restore();
 
     ctx.restore(); // end portal clip
 
