@@ -615,7 +615,6 @@ class CrocodileClockCard extends HTMLElement {
       accent_color:      '#007AFF',
       show_date:         false,
       popup_url:         '',
-
     };
   }
 
@@ -724,52 +723,45 @@ class CrocodileClockCard extends HTMLElement {
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-  // Return current time parts from sensor.time (local time, format "HH:MM").
-  // s and ms always come from the browser for smooth animation — seconds are timezone-independent.
-  _haTimeParts() {
-    const now   = new Date();
-    const state = this._hass?.states?.['sensor.time']?.state; // "HH:MM" local time
+  /**
+   * Get the current time H/M from sensor.time if available (format "HH:MM",
+   * always in the HA-configured local timezone), falling back to the browser's
+   * own local time.  Seconds and milliseconds always come from the browser —
+   * they are timezone-independent and needed for smooth animation.
+   */
+  _getTimeParts() {
+    const now = new Date();
+    const s   = now.getSeconds();
+    const ms  = now.getMilliseconds();
+
+    // Prefer sensor.time — it is authoritative for the HA timezone
+    const state = this._hass?.states?.['sensor.time']?.state; // "HH:MM"
     if (state) {
       const parts = state.split(':');
       if (parts.length === 2) {
         const h = parseInt(parts[0], 10);
         const m = parseInt(parts[1], 10);
         if (!isNaN(h) && !isNaN(m)) {
-          return { h, m, s: now.getSeconds(), ms: now.getMilliseconds() };
+          return { h, m, s, ms };
         }
       }
     }
-    // Fallback: browser local time if sensor.time is unavailable
-    return {
-      h:  now.getHours(),
-      m:  now.getMinutes(),
-      s:  now.getSeconds(),
-      ms: now.getMilliseconds(),
-    };
+
+    // Fallback: browser local time (getHours / getMinutes are always local)
+    return { h: now.getHours(), m: now.getMinutes(), s, ms };
   }
 
   _startClock() {
     const tick = () => {
-      const now = new Date();
-      const cfg = this._config;
-
-      // ── Read local time using UTC values + browser timezone offset ──
-      // getTimezoneOffset() returns minutes BEHIND UTC (e.g. -60 for BST/GMT+1).
-      // Adding UTC minutes and the negative offset gives correct local time,
-      // and works even if HA sandboxes Date() to return UTC for getHours().
-      const offsetMs  = now.getTimezoneOffset() * 60 * 1000;
-      const localMs   = now.getTime() - offsetMs;
-      const local     = new Date(localMs);
-      const h  = local.getUTCHours();
-      const m  = local.getUTCMinutes();
-      const s  = local.getUTCSeconds();
-      const ms = now.getMilliseconds();
+      const cfg          = this._config;
+      const { h, m, s, ms } = this._getTimeParts();
 
       let secAngle;
       if (cfg.show_seconds) {
         if (cfg.seconds_style === 'tick') {
           // ── Tick with mechanical spring overshoot ──────────────────
-          const rawSec = Math.floor(now.getTime() / 1000);
+          const now    = Date.now();
+          const rawSec = Math.floor(now / 1000);
           if (rawSec !== this._lastSec) {
             this._lastSec      = rawSec;
             this._springFrom   = this._currAngle;
@@ -778,25 +770,24 @@ class CrocodileClockCard extends HTMLElement {
             if (this._springTarget < this._springFrom - Math.PI) {
               this._springTarget += 2 * Math.PI;
             }
-            this._springStart = now.getTime();
+            this._springStart = now;
           }
-          const elapsed      = (now.getTime() - this._springStart) / 1000;
-          const DURATION     = 0.32;
-          const t            = Math.min(elapsed / DURATION, 1);
-          const OVERSHOOT    = 6.5 * Math.PI / 180; // 6.5° overshoot
-          const progress     = this._easeOutCubic(t);
-          // Spring: peaks mid-animation then settles
-          const bounce       = OVERSHOOT * Math.sin(t * Math.PI) * (1 - t * 0.80);
-          secAngle           = this._springFrom + (this._springTarget - this._springFrom) * progress + bounce;
-          this._currAngle    = secAngle;
+          const elapsed   = (Date.now() - this._springStart) / 1000;
+          const DURATION  = 0.32;
+          const t         = Math.min(elapsed / DURATION, 1);
+          const OVERSHOOT = 6.5 * Math.PI / 180; // 6.5° overshoot
+          const progress  = this._easeOutCubic(t);
+          const bounce    = OVERSHOOT * Math.sin(t * Math.PI) * (1 - t * 0.80);
+          secAngle        = this._springFrom + (this._springTarget - this._springFrom) * progress + bounce;
+          this._currAngle = secAngle;
         } else {
           // ── Smooth sweep ───────────────────────────────────────────
-          secAngle = ((s + ms / 1000) / 60) * 2 * Math.PI - Math.PI / 2;
+          secAngle        = ((s + ms / 1000) / 60) * 2 * Math.PI - Math.PI / 2;
           this._currAngle = secAngle;
         }
       }
 
-      // Update date label from sensor.date (local date, format "YYYY-MM-DD")
+      // Update date label — prefer sensor.date, fall back to browser
       const dateEl = this.shadowRoot.getElementById('cc-date-el');
       if (dateEl) {
         const dateState = this._hass?.states?.['sensor.date']?.state;
@@ -943,28 +934,23 @@ class CrocodileClockCard extends HTMLElement {
     let timeInterval;
     const self = this;
     const updateTime = () => {
-      const _now     = new Date();
-      const _offMs   = _now.getTimezoneOffset() * 60 * 1000;
-      const _local   = new Date(_now.getTime() - _offMs);
-      const _h   = _local.getUTCHours();
-      const _m   = _local.getUTCMinutes();
-      const _s   = _local.getUTCSeconds();
-      let   hh   = _h;
+      // Use the same authoritative source as the clock face
+      const { h: _h, m: _m, s: _s } = self._getTimeParts();
       const mm  = String(_m).padStart(2, '0');
       const ss  = String(_s).padStart(2, '0');
       const sp  = cfg.show_seconds ? `:${ss}` : '';
       if (format === '12') {
-        const ampm = hh >= 12 ? 'PM' : 'AM';
-        hh = hh % 12 || 12;
-        timeEl.textContent = `${String(hh).padStart(2, '0')}:${mm}${sp}`;
+        const ampm = _h >= 12 ? 'PM' : 'AM';
+        const hh12 = _h % 12 || 12;
+        timeEl.textContent = `${String(hh12).padStart(2, '0')}:${mm}${sp}`;
         ampmEl.textContent = ampm;
       } else {
-        timeEl.textContent = `${String(hh).padStart(2, '0')}:${mm}${sp}`;
+        timeEl.textContent = `${String(_h).padStart(2, '0')}:${mm}${sp}`;
         ampmEl.textContent = '';
       }
-      const _dateState = self._hass?.states?.['sensor.date']?.state;
-      const _d = _dateState ? new Date(_dateState + 'T00:00:00') : new Date();
-      fullDateEl.textContent = _d.toLocaleDateString('en-GB', {
+      const dateState = self._hass?.states?.['sensor.date']?.state;
+      const d = dateState ? new Date(dateState + 'T00:00:00') : new Date();
+      fullDateEl.textContent = d.toLocaleDateString('en-GB', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
     };
@@ -1376,14 +1362,11 @@ class CrocodileClockCardEditor extends HTMLElement {
     root.querySelectorAll('input[name="cc_secs"]').forEach(r => r.onchange = () => this._set('seconds_style', r.value));
     root.querySelectorAll('input[name="cc_pfmt"]').forEach(r => r.onchange = () => this._set('popup_format', r.value));
 
-    // Title removed
-
     // Popup URL
     const urlInputEl = root.getElementById('cc_popup_url');
     if (urlInputEl) urlInputEl.onchange = () => this._set('popup_url', urlInputEl.value);
     const urlTitleEl = root.getElementById('cc_popup_url_title');
     if (urlTitleEl) urlTitleEl.onchange = () => this._set('popup_url_title', urlTitleEl.value);
-
 
     // Opacity slider
     const opEl  = root.getElementById('cc_card_opacity');
