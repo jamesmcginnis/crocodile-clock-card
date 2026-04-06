@@ -8,7 +8,7 @@
  * Author:     James McGinnis
  */
 
-const CC_VERSION = '1.9.0';
+const CC_VERSION = '2.0.0';
 
 // ── Canvas roundRect polyfill ─────────────────────────────────────
 (function () {
@@ -753,14 +753,16 @@ class CrocodileClockCard extends HTMLElement {
       const now = new Date();
       const cfg = this._config;
 
-      // ── Read local time via toLocaleTimeString (always browser-local) ──
-      // Using toLocaleTimeString with hour12:false forces the JS engine to
-      // apply the local timezone, matching what the popup displays.
-      const localTime = now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-      const tp = localTime.split(':');
-      const h  = parseInt(tp[0], 10) % 24;
-      const m  = parseInt(tp[1], 10);
-      const s  = parseInt(tp[2], 10);
+      // ── Read local time using UTC values + browser timezone offset ──
+      // getTimezoneOffset() returns minutes BEHIND UTC (e.g. -60 for BST/GMT+1).
+      // Adding UTC minutes and the negative offset gives correct local time,
+      // and works even if HA sandboxes Date() to return UTC for getHours().
+      const offsetMs  = now.getTimezoneOffset() * 60 * 1000;
+      const localMs   = now.getTime() - offsetMs;
+      const local     = new Date(localMs);
+      const h  = local.getUTCHours();
+      const m  = local.getUTCMinutes();
+      const s  = local.getUTCSeconds();
       const ms = now.getMilliseconds();
 
       let secAngle;
@@ -941,12 +943,12 @@ class CrocodileClockCard extends HTMLElement {
     let timeInterval;
     const self = this;
     const updateTime = () => {
-      const _now = new Date();
-      const _lt  = _now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-      const _tp  = _lt.split(':');
-      const _h   = parseInt(_tp[0], 10) % 24;
-      const _m   = parseInt(_tp[1], 10);
-      const _s   = parseInt(_tp[2], 10);
+      const _now     = new Date();
+      const _offMs   = _now.getTimezoneOffset() * 60 * 1000;
+      const _local   = new Date(_now.getTime() - _offMs);
+      const _h   = _local.getUTCHours();
+      const _m   = _local.getUTCMinutes();
+      const _s   = _local.getUTCSeconds();
       let   hh   = _h;
       const mm  = String(_m).padStart(2, '0');
       const ss  = String(_s).padStart(2, '0');
