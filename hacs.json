@@ -1,0 +1,7 @@
+{
+  "name": "Crocodile Clock Card",
+  "description": "Analog clock card for Home Assistant with seven clock faces, smooth sweep or mechanical tick second hand, and a glassmorphic popup with digital clock and interactive calendar.",
+  "render_readme": true,
+  "filename": "crocodile-clock-card.js",
+  "homeassistant": "2023.1.0"
+}
