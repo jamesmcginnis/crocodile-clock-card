@@ -723,36 +723,18 @@ class CrocodileClockCard extends HTMLElement {
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-  /**
-   * Get the current local time parts.
-   *
-   * Strategy (in priority order):
-   *  1. sensor.time  — "HH:MM" string set by HA in the server's configured
-   *                    timezone. Most reliable when HA timezone ≠ browser TZ.
-   *  2. new Date() native methods — getHours()/getMinutes() are ALWAYS the
-   *                    browser's local time. No offset arithmetic needed or
-   *                    wanted; that was the source of the previous bug.
-   *
-   * Seconds + milliseconds always come from the browser (timezone-independent).
-   */
   _getTimeParts() {
+    // Use browser-native local time exclusively.
+    // getHours() / getMinutes() are always in the browser's local timezone —
+    // no UTC arithmetic, no sensor dependency, no offset math.
+    // The popup already proves this gives the correct local time.
     const now = new Date();
-    const s   = now.getSeconds();
-    const ms  = now.getMilliseconds();
-
-    // 1. Try sensor.time (authoritative HA timezone, updated every minute)
-    const state = this._hass?.states?.['sensor.time']?.state; // "HH:MM"
-    if (state && /^\d{1,2}:\d{2}$/.test(state)) {
-      const parts = state.split(':');
-      const h = parseInt(parts[0], 10);
-      const m = parseInt(parts[1], 10);
-      if (!isNaN(h) && !isNaN(m)) {
-        return { h, m, s, ms };
-      }
-    }
-
-    // 2. Browser local time — getHours/getMinutes are always local, no offset math needed
-    return { h: now.getHours(), m: now.getMinutes(), s, ms };
+    return {
+      h:  now.getHours(),
+      m:  now.getMinutes(),
+      s:  now.getSeconds(),
+      ms: now.getMilliseconds(),
+    };
   }
 
   _startClock() {
