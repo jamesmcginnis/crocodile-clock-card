@@ -702,88 +702,91 @@ class CrocodileClockDrawer {
         spin: 0, ripples: [], rippleTimer: 0,
         kawoosh: null, ringRotation: 0, lastFrame: now,
         prevMinute: -1, hourFlash: -99999,
-        chevGlow: [], prevHourChev: -1, prevMinChev: -1, prevSecChev: -1,
+        chevGlow: [],
+        prevHourChev: -1, prevMinChev: -1, prevSecChev: -1,
       };
     }
     const sg = this._sg;
 
     const dt = Math.min((now - sg.lastFrame) / 1000, 0.05);
     sg.ringRotation += dt * 0.018;
-    sg.spin         += dt * 0.55;
+    sg.spin         += dt * 0.50;
     sg.lastFrame = now;
 
     const rOuter  = r * 0.99;
     const rPortal = r * 0.745;
-    const PERSP   = 0.56;
-    const PI2loc  = Math.PI * 2;
+    const PERSP   = 0.50;
 
-    // Hand angles → chevron collision
-    // Chevron i is centred at angle (i/9)*2π - π/2, spanning ±(1/18)th of a circle.
-    // fracToChev maps a hand's 0→1 fraction to the chevron index it's currently over.
-    // We use plain Math.floor(f * 9) — NO rounding offset — so the trigger fires
-    // exactly when the hand tip crosses into a chevron zone, not before it.
-    const hourAngle = ((h % 12 + m / 60 + s / 3600) / 12) * PI2;
-    const minAngle  = ((m + s / 60) / 60) * PI2;
-    // secondAngle already runs 0→2π exactly like the hand, offset by -π/2 at top.
-    // We normalise all angles the same way: shift by +π/2 so 12-o'clock = 0, then
-    // divide by 2π to get 0→1, then floor×9 for chevron index.
-    const normFrac  = a => (((a + Math.PI / 2) % PI2 + PI2) % PI2) / PI2;
-    const hFrac     = normFrac(hourAngle);
-    const mFrac     = normFrac(minAngle);
-    const sFrac     = (secondAngle !== undefined) ? normFrac(secondAngle) : -1;
-    const fracToChev = f => Math.floor(f * 9) % 9;
-    const hChev = fracToChev(hFrac);
-    const mChev = fracToChev(mFrac);
-    const sChev = sFrac >= 0 ? fracToChev(sFrac) : -1;
+    // ── Chevron collision ─────────────────────────────────────────
+    // Canvas rotate() convention: 0 = pointing UP = 12 o'clock.
+    // Chevron i is at canvas angle (i/9)*2PI - PI/2.
+    //   i=0: -PI/2 = 12 o'clock. i=1: ~40deg CW = ~1:20. etc.
+    // Hand angles use identical convention: 0 = 12 o'clock.
+    // So: normalise hand angle to 0->1 (0=12oclock, CW), then floor*9.
+    // NO PI/2 offset needed -- both use the same zero point.
+    const hourAngle  = ((h % 12 + m / 60 + s / 3600) / 12) * PI2;
+    const minAngle   = ((m + s / 60) / 60) * PI2;
+
+    const angleToChev = a => {
+      const frac = (((a % PI2) + PI2) % PI2) / PI2;
+      return Math.floor(frac * 9) % 9;
+    };
+
+    const hChev = angleToChev(hourAngle);
+    const mChev = angleToChev(minAngle);
+    const sChev = (secondAngle !== undefined) ? angleToChev(secondAngle) : -1;
+
     const triggerChev = idx => {
-      if (!sg.chevGlow.find(g => g.idx === idx && now - g.born < 900))
+      if (!sg.chevGlow.find(g => g.idx === idx && now - g.born < 800))
         sg.chevGlow.push({ idx, born: now });
     };
+
     if (hChev !== sg.prevHourChev) { triggerChev(hChev); sg.prevHourChev = hChev; }
     if (mChev !== sg.prevMinChev)  { triggerChev(mChev); sg.prevMinChev  = mChev; }
     if (sChev >= 0 && sChev !== sg.prevSecChev) { triggerChev(sChev); sg.prevSecChev = sChev; }
-    sg.chevGlow = sg.chevGlow.filter(g => now - g.born < 1100);
+    sg.chevGlow = sg.chevGlow.filter(g => now - g.born < 1000);
 
-    // ── Ripple management ─────────────────────────────────────────
+    // ── Ripple spawning ───────────────────────────────────────────
     sg.rippleTimer++;
-    // Ambient drip every ~100 frames
-    if (sg.rippleTimer % 100 === 0) {
-      const ox = (Math.random() - 0.5) * rPortal * 0.28;
-      const oy = (Math.random() - 0.5) * rPortal * 0.18;
-      sg.ripples.push({ rx: rPortal * 0.03, op: 0.62, born: now, ox, oy,
-        speed: rPortal * 0.010 + Math.random() * rPortal * 0.004,
-        tilt: (Math.random() - 0.5) * 0.20 });
+    if (sg.rippleTimer % 110 === 0) {
+      const ang = Math.random() * PI2, rad = Math.random() * 0.42;
+      sg.ripples.push({
+        r: 1, op: 0.62, born: now,
+        ox: Math.cos(ang) * rPortal * rad,
+        oy: Math.sin(ang) * rPortal * rad * PERSP,
+        spd: rPortal * (0.009 + Math.random() * 0.004),
+        tilt: (Math.random() - 0.5) * 0.22,
+      });
     }
-    // Minute change → kawoosh + 5 staggered rings
     if (m !== sg.prevMinute) {
       sg.prevMinute = m;
-      sg.kawoosh = { progress: 0, maxR: rPortal * 3.0 };
+      sg.kawoosh = { p: 0, maxR: rPortal * 3.2 };
       for (let i = 0; i < 5; i++) sg.ripples.push({
-        rx: rPortal * 0.025, op: 0.90 - i * 0.10, born: now + i * 110,
-        ox: 0, oy: 0, speed: rPortal * (0.014 - i * 0.0008),
-        tilt: (Math.random() - 0.5) * 0.10 });
+        r: 1, op: 0.88 - i * 0.10, born: now + i * 120,
+        ox: 0, oy: 0, spd: rPortal * (0.0145 - i * 0.0008),
+        tilt: (Math.random() - 0.5) * 0.08,
+      });
     }
-    // Hour → two extra rings
     if (isOnTheHour && now - sg.hourFlash > 12000) {
       sg.hourFlash = now;
-      [0, 200].forEach((delay, j) => sg.ripples.push({
-        rx: rPortal * (0.10 + j * 0.08), op: 0.85 - j * 0.12, born: now + delay,
-        ox: 0, oy: 0, speed: rPortal * 0.011, tilt: 0 }));
+      for (let j = 0; j < 3; j++) sg.ripples.push({
+        r: rPortal * (0.08 + j * 0.06), op: 0.85 - j * 0.14, born: now + j * 180,
+        ox: 0, oy: 0, spd: rPortal * 0.011, tilt: 0,
+      });
     }
-    // Advance ripples
     for (let i = sg.ripples.length - 1; i >= 0; i--) {
       const rp = sg.ripples[i];
       if (now < rp.born) continue;
-      rp.rx += rp.speed;
-      rp.op *= 0.968;
-      if (rp.op < 0.025 || rp.rx > rPortal * 1.06) sg.ripples.splice(i, 1);
+      rp.r  += rp.spd;
+      rp.op *= 0.969;
+      if (rp.op < 0.022 || rp.r > rPortal * 1.08) sg.ripples.splice(i, 1);
     }
-    // Advance kawoosh
     if (sg.kawoosh) {
-      sg.kawoosh.progress += 0.025;
-      sg.kawoosh.op = Math.max(0, 1 - sg.kawoosh.progress * 1.15);
-      if (sg.kawoosh.progress >= 1) sg.kawoosh = null;
+      sg.kawoosh.p += 0.026;
+      if (sg.kawoosh.p >= 1) sg.kawoosh = null;
     }
+
+    // ── DRAW 1: Stone ring ──────────────────────────────────────
     const stoneGrad = ctx.createRadialGradient(0, 0, rPortal, 0, 0, rOuter);
     stoneGrad.addColorStop(0, '#2a2d30'); stoneGrad.addColorStop(0.18, '#1e2124');
     stoneGrad.addColorStop(0.55, '#2c3035'); stoneGrad.addColorStop(0.82, '#1a1d20');
@@ -793,107 +796,111 @@ class CrocodileClockDrawer {
     ctx.fillStyle = stoneGrad; ctx.fill('evenodd');
     [0.78,0.82,0.86,0.90,0.935,0.965].forEach(rf => {
       ctx.beginPath(); ctx.arc(0,0,r*rf,0,PI2);
-      ctx.strokeStyle=(rf*100|0)%8<1?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.25)';
+      ctx.strokeStyle = (Math.round(rf*100))%8===0 ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.22)';
       ctx.lineWidth=0.6; ctx.stroke();
     });
     ctx.restore();
 
-    // ── DRAW 2: Portal liquid surface ──────────────────────────
+    // ── DRAW 2: Portal puddle (worm-weather-card technique) ──────
     ctx.save();
-    ctx.beginPath(); ctx.arc(0,0,rPortal-1,0,PI2); ctx.clip();
+    ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.clip();
 
-    // Deep radial gradient base
-    const dg = ctx.createRadialGradient(0, rPortal*0.10, 0, 0, 0, rPortal);
-    dg.addColorStop(0,    'rgba(25,172,255,0.96)');
-    dg.addColorStop(0.30, 'rgba(8,118,218,0.90)');
-    dg.addColorStop(0.62, 'rgba(3,68,162,0.82)');
-    dg.addColorStop(0.86, 'rgba(1,26,82,0.78)');
-    dg.addColorStop(1,    'rgba(0,7,32,0.96)');
-    ctx.fillStyle = dg; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+    // Black base
+    ctx.fillStyle = '#000';
+    ctx.fillRect(-rPortal,-rPortal,rPortal*2,rPortal*2);
 
-    // Edge darkening vignette
-    const vg = ctx.createRadialGradient(0,0,rPortal*0.30,0,0,rPortal);
-    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(0.68,'rgba(0,0,0,0)');
-    vg.addColorStop(1,'rgba(0,0,0,0.60)');
-    ctx.fillStyle=vg; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+    // Surface gradient: bright centre fading to near-black edge
+    const surfG = ctx.createRadialGradient(0, rPortal*0.12, 0, 0, 0, rPortal*0.98);
+    surfG.addColorStop(0,    'rgba(32,185,255,0.97)');
+    surfG.addColorStop(0.28, 'rgba(10,128,222,0.92)');
+    surfG.addColorStop(0.55, 'rgba(4,72,168,0.86)');
+    surfG.addColorStop(0.80, 'rgba(1,32,90,0.80)');
+    surfG.addColorStop(1,    'rgba(0,8,36,0.98)');
+    ctx.fillStyle = surfG;
+    ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
 
-    // Primary moving highlight blob
-    const bx = Math.cos(sg.spin * 0.70) * rPortal * 0.30;
-    const by = Math.sin(sg.spin * 0.70) * rPortal * 0.26;
-    const h1 = ctx.createRadialGradient(bx,by,0,bx,by,rPortal*0.54);
-    h1.addColorStop(0,  `rgba(175,238,255,${0.30+Math.sin(sg.spin*.3)*.06})`);
-    h1.addColorStop(0.5,'rgba(70,188,255,0.10)'); h1.addColorStop(1,'rgba(20,100,220,0)');
-    ctx.fillStyle=h1; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+    // Edge darkening
+    const edgeG = ctx.createRadialGradient(0,0,rPortal*0.55,0,0,rPortal);
+    edgeG.addColorStop(0,'rgba(0,0,0,0)'); edgeG.addColorStop(0.7,'rgba(0,0,0,0)');
+    edgeG.addColorStop(1,'rgba(0,0,0,0.62)');
+    ctx.fillStyle = edgeG;
+    ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
 
-    // Counter-orbit secondary blob
-    const bx2 = Math.cos(sg.spin * 0.43 + 2.0) * rPortal * 0.20;
-    const by2 = Math.sin(sg.spin * 0.43 + 2.0) * rPortal * 0.18;
-    const h2  = ctx.createRadialGradient(bx2,by2,0,bx2,by2,rPortal*0.30);
-    h2.addColorStop(0,`rgba(218,250,255,${0.22+Math.sin(sg.spin*.5+1)*.04})`);
-    h2.addColorStop(1,'rgba(80,178,255,0)');
-    ctx.fillStyle=h2; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+    // Primary caustic highlight blob (orbiting)
+    const hx  = Math.cos(sg.spin * 0.75) * rPortal * 0.30;
+    const hy  = Math.sin(sg.spin * 0.75) * rPortal * 0.24;
+    const hlG = ctx.createRadialGradient(hx,hy,0,hx,hy,rPortal*0.52);
+    hlG.addColorStop(0,   `rgba(200,242,255,${0.32+Math.sin(sg.spin*0.3)*0.07})`);
+    hlG.addColorStop(0.5, 'rgba(60,190,255,0.10)');
+    hlG.addColorStop(1,   'rgba(10,100,220,0)');
+    ctx.fillStyle=hlG; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
 
-    // Slow-moving surface sheen strip
-    const sa = 0.055 + Math.sin(T * 0.42) * 0.025;
-    const sg2 = ctx.createLinearGradient(-rPortal,-rPortal*PERSP,rPortal,rPortal*PERSP);
-    sg2.addColorStop(0,'rgba(90,208,255,0)'); sg2.addColorStop(0.38,`rgba(155,232,255,${sa})`);
-    sg2.addColorStop(0.62,`rgba(115,218,255,${sa*0.55})`); sg2.addColorStop(1,'rgba(75,188,255,0)');
-    ctx.fillStyle=sg2; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+    // Secondary counter-orbit blob
+    const hx2 = Math.cos(sg.spin*0.42+1.9)*rPortal*0.22;
+    const hy2 = Math.sin(sg.spin*0.42+1.9)*rPortal*0.18;
+    const hl2 = ctx.createRadialGradient(hx2,hy2,0,hx2,hy2,rPortal*0.32);
+    hl2.addColorStop(0,`rgba(220,250,255,${0.22+Math.sin(sg.spin*0.55+1)*0.05})`);
+    hl2.addColorStop(1,'rgba(70,180,255,0)');
+    ctx.fillStyle=hl2; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
 
-    // Ripple ellipses — perspective-foreshortened, multi-ring per ripple
-    // Each ripple gets 3 concentric rings: dark trough, bright crest, inner glow.
-    // Ellipses are slightly tilted per-ripple for organic variation.
-    // Off-centre ripples (ox,oy) are translated before drawing.
+    // Drifting sheen strip
+    const sheenA = 0.048+Math.sin(T*0.38)*0.022;
+    const sAng   = T * 0.15;
+    const sx = Math.cos(sAng)*rPortal, sy = Math.sin(sAng)*rPortal;
+    const shG = ctx.createLinearGradient(-sx,-sy,sx,sy);
+    shG.addColorStop(0,'rgba(80,200,255,0)');
+    shG.addColorStop(0.40,`rgba(150,232,255,${sheenA})`);
+    shG.addColorStop(0.60,`rgba(110,218,255,${sheenA*0.55})`);
+    shG.addColorStop(1,'rgba(60,185,255,0)');
+    ctx.fillStyle=shG; ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
+
+    // Ripple ellipses — perspective-foreshortened
     for (const rp of sg.ripples) {
-      if (now < rp.born || rp.rx <= 0 || rp.rx > rPortal + 2) continue;
-      const ry = rp.rx * PERSP;
+      if (now < rp.born || rp.r <= 0 || rp.r > rPortal*1.04) continue;
+      const rx = rp.r, ry = rx * PERSP;
       ctx.save();
-      if (rp.ox || rp.oy) ctx.translate(rp.ox, rp.oy);
+      ctx.translate(rp.ox, rp.oy);
       if (rp.tilt) ctx.rotate(rp.tilt);
+      ctx.globalAlpha = rp.op;
 
-      // 1. Leading dark trough (shadow ahead of crest)
-      ctx.beginPath(); ctx.ellipse(0,0,rp.rx*1.032,ry*1.032,0,0,PI2);
-      ctx.strokeStyle = `rgba(0,12,48,${rp.op * 0.50})`;
-      ctx.lineWidth   = rPortal * 0.020 * (0.25 + rp.op * 0.9);
-      ctx.stroke();
+      // Dark trough
+      ctx.beginPath(); ctx.ellipse(0,0,rx*1.030,ry*1.030,0,0,PI2);
+      ctx.strokeStyle='rgba(0,10,45,0.58)';
+      ctx.lineWidth=rPortal*0.022*Math.max(0.2,rp.op); ctx.stroke();
 
-      // 2. Main bright crest — the characteristic silver-cyan ring
-      ctx.beginPath(); ctx.ellipse(0,0,rp.rx,ry,0,0,PI2);
-      ctx.strokeStyle = `rgba(185,238,255,${rp.op * 0.94})`;
-      ctx.lineWidth   = rPortal * 0.016 * (0.35 + rp.op * 0.85);
-      ctx.shadowColor = `rgba(100,205,255,${rp.op * 0.50})`;
-      ctx.shadowBlur  = 5;
-      ctx.stroke();
+      // Bright crest
+      ctx.beginPath(); ctx.ellipse(0,0,rx,ry,0,0,PI2);
+      ctx.strokeStyle='rgba(195,240,255,0.96)';
+      ctx.lineWidth=rPortal*0.018*Math.max(0.25,rp.op*0.9);
+      ctx.shadowColor='rgba(120,210,255,0.55)'; ctx.shadowBlur=5; ctx.stroke();
+      ctx.shadowBlur=0;
 
-      // 3. Inner soft glow (trailing face of wave)
-      ctx.beginPath(); ctx.ellipse(0,0,rp.rx*0.955,ry*0.955,0,0,PI2);
-      ctx.strokeStyle = `rgba(65,172,255,${rp.op * 0.38})`;
-      ctx.lineWidth   = rPortal * 0.008;
-      ctx.shadowBlur  = 0;
-      ctx.stroke();
+      // Inner glow
+      ctx.beginPath(); ctx.ellipse(0,0,rx*0.952,ry*0.952,0,0,PI2);
+      ctx.strokeStyle='rgba(60,168,255,0.42)';
+      ctx.lineWidth=rPortal*0.009; ctx.stroke();
 
-      // 4. Very thin bright highlight at crest tip (only on strong ripples)
-      if (rp.op > 0.35) {
-        ctx.beginPath(); ctx.ellipse(0,0,rp.rx*1.008,ry*1.008,0,0,PI2);
-        ctx.strokeStyle = `rgba(240,252,255,${(rp.op - 0.35) * 0.55})`;
-        ctx.lineWidth   = rPortal * 0.005;
-        ctx.stroke();
+      // Crest-tip highlight (fresh ripples only)
+      if (rp.op > 0.38) {
+        ctx.beginPath(); ctx.ellipse(0,0,rx*1.010,ry*1.010,0,0,PI2);
+        ctx.strokeStyle=`rgba(240,254,255,${(rp.op-0.38)*0.60})`;
+        ctx.lineWidth=rPortal*0.004; ctx.stroke();
       }
-      ctx.restore();
+      ctx.globalAlpha=1; ctx.restore();
     }
 
-    // Kawoosh radial burst
+    // Kawoosh lighter-blend burst
     if (sg.kawoosh) {
-      const kp = sg.kawoosh.progress, kr = sg.kawoosh.maxR * kp;
-      const kop = Math.max(0, 1 - kp * 1.18);
-      if (kr > 0.5 && kop > 0.01) {
+      const kp=sg.kawoosh.p, kr=sg.kawoosh.maxR*kp;
+      const kop=Math.max(0,1-kp*1.18);
+      if (kr>0.5&&kop>0.01) {
         ctx.save(); ctx.globalCompositeOperation='lighter';
-        const kg = ctx.createRadialGradient(0,0,kr*0.45,0,0,kr);
-        kg.addColorStop(0,'rgba(38,155,255,0)');
-        kg.addColorStop(0.55,`rgba(68,212,255,${kop*0.62})`);
-        kg.addColorStop(0.82,`rgba(158,240,255,${kop*0.85})`);
+        const kg=ctx.createRadialGradient(0,0,kr*0.42,0,0,kr);
+        kg.addColorStop(0,'rgba(30,148,255,0)');
+        kg.addColorStop(0.52,`rgba(65,210,255,${kop*0.60})`);
+        kg.addColorStop(0.80,`rgba(155,240,255,${kop*0.82})`);
         kg.addColorStop(1,'rgba(255,255,255,0)');
-        ctx.fillStyle=kg; ctx.beginPath(); ctx.arc(0,0,Math.min(kr,rPortal*1.5),0,PI2); ctx.fill();
+        ctx.fillStyle=kg; ctx.beginPath(); ctx.arc(0,0,Math.min(kr,rPortal*1.6),0,PI2); ctx.fill();
         ctx.restore();
       }
     }
@@ -901,48 +908,49 @@ class CrocodileClockDrawer {
 
     // ── DRAW 3: Event horizon rim ───────────────────────────────
     ctx.save();
-    const rp2 = 0.46 + Math.sin(T * 1.3) * 0.08;
-    ctx.beginPath(); ctx.arc(0,0,rPortal+r*0.008,0,PI2);
-    ctx.strokeStyle=`rgba(52,162,255,${rp2})`; ctx.lineWidth=r*0.018;
-    ctx.shadowColor='rgba(0,135,255,0.88)'; ctx.shadowBlur=14; ctx.stroke();
+    const rimP=0.45+Math.sin(T*1.25)*0.08;
+    ctx.beginPath(); ctx.arc(0,0,rPortal+r*0.009,0,PI2);
+    ctx.strokeStyle=`rgba(48,158,255,${rimP})`; ctx.lineWidth=r*0.019;
+    ctx.shadowColor='rgba(0,130,255,0.88)'; ctx.shadowBlur=14; ctx.stroke();
     ctx.beginPath(); ctx.arc(0,0,rPortal-r*0.004,0,PI2);
-    ctx.strokeStyle=`rgba(175,232,255,${0.30+Math.sin(T*.85)*.07})`; ctx.lineWidth=r*0.005; ctx.shadowBlur=4; ctx.stroke();
+    ctx.strokeStyle=`rgba(172,232,255,${0.28+Math.sin(T*0.80)*0.07})`;
+    ctx.lineWidth=r*0.005; ctx.shadowBlur=4; ctx.stroke();
     ctx.restore();
 
     // ── DRAW 4: 39 rotating glyph slots ────────────────────────
     ctx.save(); ctx.rotate(sg.ringRotation);
-    for (let i = 0; i < 39; i++) {
-      const a = (i/39)*PI2, gx=Math.cos(a)*r*0.862, gy=Math.sin(a)*r*0.862;
+    for (let i=0;i<39;i++) {
+      const a=(i/39)*PI2, gx=Math.cos(a)*r*0.862, gy=Math.sin(a)*r*0.862;
       ctx.save(); ctx.translate(gx,gy); ctx.rotate(a+Math.PI/2);
-      const sw=r*0.026, sh=r*0.040;
+      const sw=r*0.026,sh=r*0.040;
       ctx.beginPath(); ctx.roundRect(-sw/2,-sh/2,sw,sh,sw*0.3);
-      ctx.fillStyle='rgba(0,0,0,0.50)'; ctx.fill();
-      ctx.strokeStyle='rgba(172,198,214,0.30)'; ctx.lineWidth=0.55;
+      ctx.fillStyle='rgba(0,0,0,0.52)'; ctx.fill();
+      ctx.strokeStyle='rgba(172,198,215,0.30)'; ctx.lineWidth=0.55;
       const seed=(i*137)%7; ctx.beginPath();
-      if      (seed<2){ctx.moveTo(-sw*.3,-sh*.25);ctx.lineTo(sw*.3,-sh*.25);ctx.moveTo(0,-sh*.25);ctx.lineTo(0,sh*.25);}
+      if      (seed<2){ctx.moveTo(-sw*.30,-sh*.25);ctx.lineTo(sw*.30,-sh*.25);ctx.moveTo(0,-sh*.25);ctx.lineTo(0,sh*.25);}
       else if (seed<4){ctx.moveTo(-sw*.35,0);ctx.lineTo(sw*.35,0);ctx.arc(0,0,sw*.28,0,PI2);}
-      else if (seed<6){ctx.moveTo(-sw*.3,-sh*.3);ctx.lineTo(sw*.3,sh*.3);ctx.moveTo(sw*.3,-sh*.3);ctx.lineTo(-sw*.3,sh*.3);}
-      else            {ctx.moveTo(0,-sh*.35);ctx.lineTo(sw*.3,sh*.1);ctx.lineTo(-sw*.3,sh*.1);ctx.closePath();}
+      else if (seed<6){ctx.moveTo(-sw*.30,-sh*.30);ctx.lineTo(sw*.30,sh*.30);ctx.moveTo(sw*.30,-sh*.30);ctx.lineTo(-sw*.30,sh*.30);}
+      else            {ctx.moveTo(0,-sh*.35);ctx.lineTo(sw*.30,sh*.10);ctx.lineTo(-sw*.30,sh*.10);ctx.closePath();}
       ctx.stroke(); ctx.restore();
     }
     ctx.restore();
 
     // ── DRAW 5: Nine chevrons ───────────────────────────────────
-    const hourAge = now - sg.hourFlash;
-    for (let i = 0; i < 9; i++) {
-      const a = (i/9)*PI2 - Math.PI/2;
+    const hourAge=now-sg.hourFlash;
+    for (let i=0;i<9;i++) {
+      const a=(i/9)*PI2-Math.PI/2;
       const cx2=Math.cos(a)*r*0.955, cy2=Math.sin(a)*r*0.955;
       const lockDelay=i*900;
-      const isLocked = isOnTheHour && hourAge>lockDelay && hourAge<lockDelay+8500;
-      const lockFlash= isOnTheHour && hourAge>lockDelay && hourAge<lockDelay+380;
-      const hgc    = sg.chevGlow.find(g=>g.idx===i);
-      const hAge   = hgc ? (now-hgc.born)/1100 : 1;
-      const handLit= hgc && hAge<1.0;
-      const handFade=handLit ? Math.pow(1-hAge,1.4) : 0;
-      const isRed  = isLocked||lockFlash||handLit;
+      const isLocked=isOnTheHour&&hourAge>lockDelay&&hourAge<lockDelay+8500;
+      const lockFlash=isOnTheHour&&hourAge>lockDelay&&hourAge<lockDelay+380;
+      const ge=sg.chevGlow.find(g=>g.idx===i);
+      const gAge=ge?(now-ge.born)/1000:1;
+      const handLit=!!ge&&gAge<1.0;
+      const handFade=handLit?Math.pow(1-gAge,1.4):0;
+      const isRed=isLocked||lockFlash||handLit;
 
       ctx.save(); ctx.translate(cx2,cy2); ctx.rotate(a+Math.PI/2);
-      const cW=r*0.088, cH=r*0.132, cW2=cW*0.5;
+      const cW=r*0.088,cH=r*0.132,cW2=cW*0.5;
       ctx.beginPath();
       ctx.moveTo(-cW2,cH*.28); ctx.lineTo(-cW2*.72,-cH*.22);
       ctx.lineTo(-cW2*.38,-cH*.52); ctx.lineTo(cW2*.38,-cH*.52);
@@ -952,7 +960,7 @@ class CrocodileClockDrawer {
       ctx.fillStyle=bg; ctx.fill();
       ctx.strokeStyle='rgba(255,255,255,0.11)'; ctx.lineWidth=0.7; ctx.stroke();
 
-      const vW=cW*.70, vH=cH*.72, vW2=vW*.5;
+      const vW=cW*.70,vH=cH*.72,vW2=vW*.5;
       ctx.beginPath();
       ctx.moveTo(0,-vH*.52); ctx.lineTo(vW2,vH*.28); ctx.lineTo(vW2*.4,vH*.28);
       ctx.lineTo(0,-vH*.10); ctx.lineTo(-vW2*.4,vH*.28); ctx.lineTo(-vW2,vH*.28);
@@ -962,11 +970,11 @@ class CrocodileClockDrawer {
         if (lockFlash){rg.addColorStop(0,'#FFFFFF');rg.addColorStop(.28,'#FFBBAA');rg.addColorStop(1,'#FF2200');}
         else {
           const b=isLocked?1.0:handFade;
-          rg.addColorStop(0,`rgb(255,${Math.round(60+b*30)},${Math.round(b*18)})`);
-          rg.addColorStop(.5,'#EE1800'); rg.addColorStop(1,'#BB0E00');
+          rg.addColorStop(0,`rgb(255,${Math.round(58+b*30)},${Math.round(b*16)})`);
+          rg.addColorStop(.5,'#EE1800'); rg.addColorStop(1,'#BB0D00');
         }
         ctx.fillStyle=rg;
-        ctx.shadowColor=lockFlash?'rgba(255,220,200,1)':'rgba(255,20,0,0.95)';
+        ctx.shadowColor=lockFlash?'rgba(255,225,200,1)':'rgba(255,18,0,0.96)';
         ctx.shadowBlur=lockFlash?30:(isLocked?22:handFade*24);
       } else {
         const ug=ctx.createLinearGradient(0,-vH*.52,0,vH*.28);
@@ -982,13 +990,13 @@ class CrocodileClockDrawer {
       ctx.restore();
     }
 
-    // ── DRAW 6: Outer metallic bezel ────────────────────────────
+    // ── DRAW 6: Outer bezel ─────────────────────────────────────
     ctx.save();
     ctx.beginPath(); ctx.arc(0,0,rOuter-1,0,PI2);
     const bz=ctx.createLinearGradient(-rOuter,-rOuter,rOuter,rOuter);
     bz.addColorStop(0,'rgba(210,220,230,0.20)'); bz.addColorStop(.5,'rgba(200,212,224,0.14)');
     bz.addColorStop(1,'rgba(185,195,208,0.18)');
-    ctx.strokeStyle=bz; ctx.lineWidth=1.5; ctx.stroke();
+    ctx.strokeStyle=bz; ctx.lineWidth=1.5; ctx.shadowBlur=0; ctx.stroke();
     ctx.restore();
   }
   // ── Hands ─────────────────────────────────────────────────────────
