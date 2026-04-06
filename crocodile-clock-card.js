@@ -8,7 +8,7 @@
  * Author:     James McGinnis
  */
 
-const CC_VERSION = '1.3.0';
+const CC_VERSION = '1.4.0';
 
 // ── Canvas roundRect polyfill ─────────────────────────────────────
 (function () {
@@ -723,35 +723,29 @@ class CrocodileClockCard extends HTMLElement {
   // ── Animation loop ────────────────────────────────────────────────
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
-  // Returns a Date-like object with h/m/s/ms resolved in HA's configured timezone
-  _haTimeParts(now) {
-    const tz = this._hass?.config?.time_zone;
-    if (!tz) {
-      return { h: now.getHours(), m: now.getMinutes(), s: now.getSeconds(), ms: now.getMilliseconds() };
+  // Read time from sensor.date_time_utc (format: "2026-04-06, 09:35")
+  // Returns { h, m } from HA entity, s/ms from browser for smooth animation
+  _haTimeParts() {
+    const state = this._hass?.states?.['sensor.date_time_utc']?.state;
+    if (state) {
+      const timePart = state.includes(', ') ? state.split(', ')[1] : state.split(' ')[1];
+      if (timePart) {
+        const [h, m] = timePart.split(':').map(Number);
+        if (!isNaN(h) && !isNaN(m)) {
+          const now = new Date();
+          return { h, m, s: now.getSeconds(), ms: now.getMilliseconds() };
+        }
+      }
     }
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      hour12: false,
-    }).formatToParts(now);
-    const get = type => parseInt(parts.find(p => p.type === type)?.value ?? '0', 10);
-    // hour12:false can return 24 for midnight — normalise to 0
-    const h = get('hour') % 24;
-    return { h, m: get('minute'), s: get('second'), ms: now.getMilliseconds() };
-  }
-
-  _haDateStr(now) {
-    const tz = this._hass?.config?.time_zone;
-    return now.toLocaleDateString(tz ? 'en-GB' : undefined, {
-      timeZone: tz || undefined,
-      weekday: 'short', month: 'short', day: 'numeric',
-    });
+    // Fallback to browser time if entity not available
+    const now = new Date();
+    return { h: now.getHours(), m: now.getMinutes(), s: now.getSeconds(), ms: now.getMilliseconds() };
   }
 
   _startClock() {
     const tick = () => {
-      const now           = new Date();
-      const { h, m, s, ms } = this._haTimeParts(now);
+      const { h, m, s, ms } = this._haTimeParts();
+      const now = new Date();
       const cfg = this._config;
 
       let secAngle;
@@ -785,10 +779,21 @@ class CrocodileClockCard extends HTMLElement {
         }
       }
 
-      // Update date label
+      // Update date label from sensor.date_time_utc date part
       const dateEl = this.shadowRoot.getElementById('cc-date-el');
       if (dateEl) {
-        dateEl.textContent = this._haDateStr(now);
+        const dtState = this._hass?.states?.['sensor.date_time_utc']?.state;
+        if (dtState && dtState.includes(', ')) {
+          const datePart = dtState.split(', ')[0]; // "2026-04-06"
+          const d = new Date(datePart + 'T00:00:00');
+          dateEl.textContent = d.toLocaleDateString('en-GB', {
+            weekday: 'short', month: 'short', day: 'numeric',
+          });
+        } else {
+          dateEl.textContent = new Date().toLocaleDateString(undefined, {
+            weekday: 'short', month: 'short', day: 'numeric',
+          });
+        }
       }
 
       if (this._drawer) this._drawer.draw(h, m, s, secAngle);
@@ -928,8 +933,7 @@ class CrocodileClockCard extends HTMLElement {
     let timeInterval;
     const self = this;
     const updateTime = () => {
-      const now              = new Date();
-      const { h: _h, m: _m, s: _s } = self._haTimeParts(now);
+      const { h: _h, m: _m, s: _s } = self._haTimeParts();
       let   hh  = _h;
       const mm  = String(_m).padStart(2, '0');
       const ss  = String(_s).padStart(2, '0');
@@ -943,7 +947,9 @@ class CrocodileClockCard extends HTMLElement {
         timeEl.textContent = `${String(hh).padStart(2, '0')}:${mm}${sp}`;
         ampmEl.textContent = '';
       }
-      fullDateEl.textContent = now.toLocaleDateString(self._hass?.config?.time_zone ? 'en-GB' : undefined, { timeZone: self._hass?.config?.time_zone || undefined,
+      const _dtState = self._hass?.states?.['sensor.date_time_utc']?.state;
+      const _dateBase = (_dtState && _dtState.includes(', ')) ? new Date(_dtState.split(', ')[0] + 'T00:00:00') : new Date();
+      fullDateEl.textContent = _dateBase.toLocaleDateString('en-GB', {
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
     };
