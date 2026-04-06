@@ -625,7 +625,11 @@ class CrocodileClockCard extends HTMLElement {
     this._buildCard();
   }
 
-  set hass(_h) {}
+  set hass(h) {
+    this._hass = h;
+    // Start clock on first hass assignment (tz now available)
+    if (!this._raf && this._config) this._startClock();
+  }
 
   connectedCallback() {
     if (this._config && !this._raf) this._startClock();
@@ -721,23 +725,23 @@ class CrocodileClockCard extends HTMLElement {
 
   // Returns a Date-like object with h/m/s/ms resolved in HA's configured timezone
   _haTimeParts(now) {
-    const tz = this.hass?.config?.time_zone;
+    const tz = this._hass?.config?.time_zone;
     if (!tz) {
       return { h: now.getHours(), m: now.getMinutes(), s: now.getSeconds(), ms: now.getMilliseconds() };
     }
     const parts = new Intl.DateTimeFormat('en-US', {
       timeZone: tz,
-      hour: 'numeric', minute: 'numeric', second: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
       hour12: false,
     }).formatToParts(now);
     const get = type => parseInt(parts.find(p => p.type === type)?.value ?? '0', 10);
-    // hour12:false returns 24 for midnight — normalise to 0
+    // hour12:false can return 24 for midnight — normalise to 0
     const h = get('hour') % 24;
     return { h, m: get('minute'), s: get('second'), ms: now.getMilliseconds() };
   }
 
   _haDateStr(now) {
-    const tz = this.hass?.config?.time_zone;
+    const tz = this._hass?.config?.time_zone;
     return now.toLocaleDateString(tz ? 'en-GB' : undefined, {
       timeZone: tz || undefined,
       weekday: 'short', month: 'short', day: 'numeric',
@@ -939,7 +943,7 @@ class CrocodileClockCard extends HTMLElement {
         timeEl.textContent = `${String(hh).padStart(2, '0')}:${mm}${sp}`;
         ampmEl.textContent = '';
       }
-      fullDateEl.textContent = now.toLocaleDateString(self.hass?.config?.time_zone ? 'en-GB' : undefined, { timeZone: self.hass?.config?.time_zone || undefined,
+      fullDateEl.textContent = now.toLocaleDateString(self._hass?.config?.time_zone ? 'en-GB' : undefined, { timeZone: self._hass?.config?.time_zone || undefined,
         weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
       });
     };
