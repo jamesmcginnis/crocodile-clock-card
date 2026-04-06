@@ -724,30 +724,34 @@ class CrocodileClockCard extends HTMLElement {
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
   /**
-   * Get the current time H/M from sensor.time if available (format "HH:MM",
-   * always in the HA-configured local timezone), falling back to the browser's
-   * own local time.  Seconds and milliseconds always come from the browser —
-   * they are timezone-independent and needed for smooth animation.
+   * Get the current local time parts.
+   *
+   * Strategy (in priority order):
+   *  1. sensor.time  — "HH:MM" string set by HA in the server's configured
+   *                    timezone. Most reliable when HA timezone ≠ browser TZ.
+   *  2. new Date() native methods — getHours()/getMinutes() are ALWAYS the
+   *                    browser's local time. No offset arithmetic needed or
+   *                    wanted; that was the source of the previous bug.
+   *
+   * Seconds + milliseconds always come from the browser (timezone-independent).
    */
   _getTimeParts() {
     const now = new Date();
     const s   = now.getSeconds();
     const ms  = now.getMilliseconds();
 
-    // Prefer sensor.time — it is authoritative for the HA timezone
+    // 1. Try sensor.time (authoritative HA timezone, updated every minute)
     const state = this._hass?.states?.['sensor.time']?.state; // "HH:MM"
-    if (state) {
+    if (state && /^\d{1,2}:\d{2}$/.test(state)) {
       const parts = state.split(':');
-      if (parts.length === 2) {
-        const h = parseInt(parts[0], 10);
-        const m = parseInt(parts[1], 10);
-        if (!isNaN(h) && !isNaN(m)) {
-          return { h, m, s, ms };
-        }
+      const h = parseInt(parts[0], 10);
+      const m = parseInt(parts[1], 10);
+      if (!isNaN(h) && !isNaN(m)) {
+        return { h, m, s, ms };
       }
     }
 
-    // Fallback: browser local time (getHours / getMinutes are always local)
+    // 2. Browser local time — getHours/getMinutes are always local, no offset math needed
     return { h: now.getHours(), m: now.getMinutes(), s, ms };
   }
 
