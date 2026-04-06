@@ -678,66 +678,218 @@ class CrocodileClockDrawer {
   _faceStargate(r, accent, text, h, m, s) {
     const ctx = this.ctx;
     const now = Date.now();
-    const T   = now / 1000; // seconds, for smooth animation
+    const T   = now / 1000;
     const isOnTheHour = (m === 0 && s < 10);
 
-    // ── Persistent animation state ────────────────────────────────
+    // ── Fluid simulation grid ─────────────────────────────────────
+    // We maintain a 2D height-field (SIM_W × SIM_W) that is stepped
+    // each frame using the classic "ripple tank" wave equation:
+    //   new[x,y] = damping * (buf1[x-1,y]+buf1[x+1,y]+buf1[x,y-1]+buf1[x,y+1])/2 - buf2[x,y]
+    // This produces physically correct wave propagation with natural
+    // dispersion and interference — exactly what the Stargate puddle looks like.
+
+    const SIM_W = 80; // grid resolution (80×80 is fast and smooth enough)
+    const SIM_N = SIM_W * SIM_W;
+    const DAMP  = 0.985; // damping (higher = longer-lived waves)
+
     if (!this._sg) {
       this._sg = {
-        ripples:        [],
-        lastRipple:     0,
-        swooshes:       [],
-        lastSwoosh:     0,
-        hourFlash:      -99999,
-        prevMinute:     -1,
-        // Slow-rotate the entire ring assembly
-        ringRotation:   0,
-        lastFrame:      now,
+        buf1:        new Float32Array(SIM_N), // current frame heights
+        buf2:        new Float32Array(SIM_N), // previous frame heights
+        imgData:     null,  // reused ImageData
+        offCanvas:   null,  // offscreen canvas for pixel compositing
+        offCtx:      null,
+        ringRotation: 0,
+        lastFrame:   now,
+        prevMinute:  -1,
+        hourFlash:   -99999,
+        lastDrop:    0,
+        dropQueue:   [],    // { cx, cy, amp, radius }
       };
+      // Pre-calculate circle mask (which grid cells are inside the portal)
+      const mask = new Uint8Array(SIM_N);
+      const half = SIM_W / 2 - 1;
+      for (let y = 0; y < SIM_W; y++) {
+        for (let x = 0; x < SIM_W; x++) {
+          const dx = x - SIM_W / 2 + 0.5, dy = y - SIM_W / 2 + 0.5;
+          mask[y * SIM_W + x] = (Math.sqrt(dx*dx + dy*dy) < half) ? 1 : 0;
+        }
+      }
+      this._sg.mask = mask;
+
+      // Offscreen canvas for pixel-level portal rendering
+      const oc = document.createElement('canvas');
+      oc.width  = SIM_W;
+      oc.height = SIM_W;
+      this._sg.offCanvas = oc;
+      this._sg.offCtx    = oc.getContext('2d');
+      this._sg.imgData   = this._sg.offCtx.createImageData(SIM_W, SIM_W);
     }
     const sg = this._sg;
 
-    // Ring slow-rotation delta
-    const dt = Math.min((now - sg.lastFrame) / 1000, 0.1);
-    sg.ringRotation += dt * 0.018; // ~1 full rotation per 5.8 min
+    // ── Time step ─────────────────────────────────────────────────
+    const dt = Math.min((now - sg.lastFrame) / 1000, 0.05);
+    sg.ringRotation += dt * 0.018;
     sg.lastFrame = now;
 
-    // Detect new minute → trigger kawoosh (puddle burst)
+    // ── Disturbance sources ───────────────────────────────────────
+    // 1. Continuous ambient drips — random small drops every 1.2–2.8 s
+    if (now - sg.lastDrop > 1200 + Math.random() * 1600) {
+      sg.lastDrop = now;
+      // Random position within 55% of portal radius (centre region)
+      const ang = Math.random() * Math.PI * 2;
+      const rad = Math.random() * 0.50;
+      sg.dropQueue.push({
+        cx: Math.round(SIM_W/2 + Math.cos(ang) * rad * SIM_W/2),
+        cy: Math.round(SIM_W/2 + Math.sin(ang) * rad * SIM_W/2),
+        amp: 180 + Math.random() * 120,
+        radius: 1 + Math.floor(Math.random() * 2),
+      });
+    }
+
+    // 2. Minute change → big kawoosh burst from centre
     if (m !== sg.prevMinute) {
       sg.prevMinute = m;
-      // Burst of 5 outward ripples staggered slightly
-      for (let i = 0; i < 5; i++) {
-        sg.ripples.push({ born: now + i * 90, speed: 0.55 + i * 0.07, opacity: 0.9 - i * 0.12 });
+      // Large central disturbance — simulates the kawoosh eruption
+      sg.dropQueue.push({ cx: SIM_W/2, cy: SIM_W/2, amp: 900, radius: 5 });
+      // A few offset splashes around it
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2;
+        sg.dropQueue.push({
+          cx: Math.round(SIM_W/2 + Math.cos(a) * 4),
+          cy: Math.round(SIM_W/2 + Math.sin(a) * 4),
+          amp: 600, radius: 3,
+        });
       }
-      // Also a swoosh on minute change
-      sg.swooshes.push({ born: now, angle: Math.random() * Math.PI * 2, dir: Math.random() < 0.5 ? 1 : -1 });
     }
 
-    // Hour flash: detect crossing the hour
-    if (isOnTheHour && now - sg.hourFlash > 15000) sg.hourFlash = now;
-
-    // Background ambient ripple every ~3.5 s
-    if (now - sg.lastRipple > 3500) {
-      sg.lastRipple = now;
-      sg.ripples.push({ born: now, speed: 0.38, opacity: 0.55 });
+    // 3. Hour → full-gate energy surge
+    if (isOnTheHour && now - sg.hourFlash > 15000) {
+      sg.hourFlash = now;
+      // Ring-shaped disturbance at 60% radius — like the kawoosh wave hitting the ring
+      const pts = 48;
+      for (let i = 0; i < pts; i++) {
+        const a = (i / pts) * Math.PI * 2;
+        sg.dropQueue.push({
+          cx: Math.round(SIM_W/2 + Math.cos(a) * SIM_W * 0.30),
+          cy: Math.round(SIM_W/2 + Math.sin(a) * SIM_W * 0.30),
+          amp: 700, radius: 2,
+        });
+      }
     }
 
-    // Trim dead ripples (live 2.8 s)
-    sg.ripples = sg.ripples.filter(rp => now - rp.born < 2800);
+    // ── Apply pending disturbances into buf1 ──────────────────────
+    sg.dropQueue.forEach(d => {
+      for (let dy = -d.radius; dy <= d.radius; dy++) {
+        for (let dx = -d.radius; dx <= d.radius; dx++) {
+          if (dx*dx + dy*dy > d.radius*d.radius) continue;
+          const px = Math.round(d.cx + dx), py = Math.round(d.cy + dy);
+          if (px >= 0 && px < SIM_W && py >= 0 && py < SIM_W) {
+            sg.buf1[py * SIM_W + px] += d.amp;
+          }
+        }
+      }
+    });
+    sg.dropQueue = [];
 
-    // Ambient swoosh every 9–15 s
-    if (sg.swooshes.length === 0 && now - sg.lastSwoosh > 9000 + Math.random() * 6000) {
-      sg.lastSwoosh = now;
-      sg.swooshes.push({ born: now, angle: Math.random() * Math.PI * 2, dir: Math.random() < 0.5 ? 1 : -1 });
+    // ── Step the wave simulation ──────────────────────────────────
+    // Run multiple sub-steps per frame for stability & richness
+    const STEPS = 3;
+    const b1 = sg.buf1, b2 = sg.buf2, mask = sg.mask;
+    for (let step = 0; step < STEPS; step++) {
+      for (let y = 1; y < SIM_W - 1; y++) {
+        for (let x = 1; x < SIM_W - 1; x++) {
+          const i = y * SIM_W + x;
+          if (!mask[i]) continue;
+          // Wave equation: average of 4 neighbours × 2, minus previous, damped
+          const next = DAMP * (
+            (b1[i-1] + b1[i+1] + b1[i-SIM_W] + b1[i+SIM_W]) * 0.5
+          ) - b2[i];
+          b2[i] = b1[i];
+          b1[i] = next;
+          // Hard clamp to prevent blow-up
+          if (b1[i] >  1000) b1[i] =  1000;
+          if (b1[i] < -1000) b1[i] = -1000;
+        }
+      }
     }
-    sg.swooshes = sg.swooshes.filter(sw => now - sw.born < 1200);
+
+    // ── Render height field to pixel colours ─────────────────────
+    // Colour mapping: height → iridescent blue-silver-white
+    // Positive height (wave crest) → bright silver/white
+    // Zero (trough) → deep dark blue-black
+    // Negative (wave valley) → mid-blue with slight cyan
+    //
+    // Additionally apply a fake "normal map" reflection:
+    // compare height to neighbours → derive surface normal → use to
+    // modulate brightness (simulates light glinting off wave faces)
+    const pix = sg.imgData.data;
+    const half = SIM_W / 2;
+    for (let y = 0; y < SIM_W; y++) {
+      for (let x = 0; x < SIM_W; x++) {
+        const i  = y * SIM_W + x;
+        const pi = i * 4;
+        const dx = x - half + 0.5, dy = y - half + 0.5;
+        const distNorm = Math.sqrt(dx*dx + dy*dy) / half; // 0 at centre, 1 at edge
+
+        if (!mask[i]) {
+          pix[pi]=0; pix[pi+1]=0; pix[pi+2]=0; pix[pi+3]=0;
+          continue;
+        }
+
+        const h = b1[i];
+
+        // Normal map from height gradient
+        const hL = (x > 0           && mask[i-1])      ? b1[i-1]      : h;
+        const hR = (x < SIM_W-1     && mask[i+1])      ? b1[i+1]      : h;
+        const hU = (y > 0           && mask[i-SIM_W])  ? b1[i-SIM_W]  : h;
+        const hD = (y < SIM_W-1     && mask[i+SIM_W])  ? b1[i+SIM_W]  : h;
+        // Surface gradient (slope)
+        const nx = (hL - hR) * 0.5;  // +x = slope left
+        const ny = (hU - hD) * 0.5;  // +y = slope up
+        // Light direction: upper-left, slight depth
+        const lx = -0.6, ly = -0.5, lz = 0.8;
+        const len = Math.sqrt(nx*nx + ny*ny + 1);
+        const dot = Math.max(0, (nx*lx + ny*ly + lz) / len); // Lambertian
+
+        // Base colour: deep blue-black void
+        // Height modulates: crests are silver-white, valleys are dark blue
+        const normH  = Math.max(-1, Math.min(1, h / 280));  // -1 to +1
+        // Crest brightness — goes bright white at positive peaks
+        const crest  = Math.max(0, normH);         // 0→1 for positive heights
+        const valley = Math.max(0, -normH) * 0.4;  // 0→0.4 for negative depths
+
+        // Edge vignette — darker at edge of portal
+        const vignette = Math.pow(1 - distNorm, 0.35);
+
+        // Final colour channels
+        // R: barely any red in the mid-tones (it's blue); crests get white (all channels)
+        // G: mid-blue range, some green in the cyan highlights
+        // B: dominant channel
+        const specular = Math.pow(dot, 4) * 0.6;  // specular highlight
+        const diffuse  = dot * 0.3;
+
+        let R = (crest * 210 + specular * 255 + valley * 10  + 5)  * vignette;
+        let G = (crest * 230 + specular * 245 + valley * 25  + 20) * vignette;
+        let B = (crest * 255 + specular * 255 + valley * 60  + 55  + diffuse * 140) * vignette;
+
+        // Iridescent shimmer: add a subtle colour-shift based on wave slope direction
+        const shimmer = Math.sin(nx * 0.08 + T * 1.1) * 12;
+        G += shimmer * crest * vignette;
+        B += shimmer * 0.5 * vignette;
+
+        pix[pi]   = Math.min(255, Math.max(0, R));
+        pix[pi+1] = Math.min(255, Math.max(0, G));
+        pix[pi+2] = Math.min(255, Math.max(0, B));
+        pix[pi+3] = 255;
+      }
+    }
+    sg.offCtx.putImageData(sg.imgData, 0, 0);
 
     // ═══════════════════════════════════════════════════════════════
     // STEP 1 — Solid stone ring face (Abydos DHD-style)
-    // The gate ring is dark grey granite with carved symbols
     // ═══════════════════════════════════════════════════════════════
-    const rOuter = r * 0.99;
-    const rRing  = r * 0.77; // inner edge of the stone ring
+    const rOuter  = r * 0.99;
     const rPortal = r * 0.74; // portal opening
 
     // Stone ring — dark granite gradient
@@ -753,8 +905,7 @@ class CrocodileClockDrawer {
     ctx.arc(0, 0, rPortal, 0, Math.PI * 2, true);
     ctx.fillStyle = stoneGrad;
     ctx.fill('evenodd');
-
-    // Stone ring subtle texture — concentric grooves
+    // Concentric groove texture
     [0.78, 0.82, 0.86, 0.90, 0.935, 0.965].forEach(rf => {
       ctx.beginPath(); ctx.arc(0, 0, r * rf, 0, Math.PI * 2);
       ctx.strokeStyle = rf % 0.08 < 0.01 ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.25)';
@@ -763,43 +914,38 @@ class CrocodileClockDrawer {
     ctx.restore();
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 2 — 39 Glyph symbol slots on the inner ring (rotatable)
+    // STEP 2 — 39 Glyph symbol slots (slowly rotating ring)
     // ═══════════════════════════════════════════════════════════════
     const GLYPHS = 39;
     const glyphR = r * 0.86;
     ctx.save();
     ctx.rotate(sg.ringRotation);
     for (let i = 0; i < GLYPHS; i++) {
-      const a = (i / GLYPHS) * Math.PI * 2;
+      const a  = (i / GLYPHS) * Math.PI * 2;
       const gx = Math.cos(a) * glyphR;
       const gy = Math.sin(a) * glyphR;
-      // Glyph slot recess
       ctx.save();
       ctx.translate(gx, gy);
       ctx.rotate(a + Math.PI / 2);
-      const slotW = r * 0.028;
-      const slotH = r * 0.042;
+      const slotW = r * 0.028, slotH = r * 0.042;
       ctx.beginPath();
-      ctx.roundRect(-slotW / 2, -slotH / 2, slotW, slotH, slotW * 0.3);
-      ctx.fillStyle = 'rgba(0,0,0,0.55)';
-      ctx.fill();
-      // Glyph marking — simple carved lines unique per position
-      ctx.strokeStyle = 'rgba(180,200,210,0.28)';
-      ctx.lineWidth = 0.6;
+      ctx.roundRect(-slotW/2, -slotH/2, slotW, slotH, slotW * 0.3);
+      ctx.fillStyle = 'rgba(0,0,0,0.55)'; ctx.fill();
+      ctx.strokeStyle = 'rgba(180,200,210,0.28)'; ctx.lineWidth = 0.6;
       const seed = (i * 137) % 7;
       ctx.beginPath();
       if (seed < 2) {
-        ctx.moveTo(-slotW * 0.3, -slotH * 0.25); ctx.lineTo(slotW * 0.3, -slotH * 0.25);
-        ctx.moveTo(0, -slotH * 0.25); ctx.lineTo(0, slotH * 0.25);
+        ctx.moveTo(-slotW*0.3,-slotH*0.25); ctx.lineTo(slotW*0.3,-slotH*0.25);
+        ctx.moveTo(0,-slotH*0.25); ctx.lineTo(0,slotH*0.25);
       } else if (seed < 4) {
-        ctx.moveTo(-slotW * 0.35, 0); ctx.lineTo(slotW * 0.35, 0);
-        ctx.arc(0, 0, slotW * 0.28, 0, Math.PI * 2);
+        ctx.moveTo(-slotW*0.35,0); ctx.lineTo(slotW*0.35,0);
+        ctx.arc(0,0,slotW*0.28,0,Math.PI*2);
       } else if (seed < 6) {
-        ctx.moveTo(-slotW * 0.3, -slotH * 0.3); ctx.lineTo(slotW * 0.3, slotH * 0.3);
-        ctx.moveTo(slotW * 0.3, -slotH * 0.3); ctx.lineTo(-slotW * 0.3, slotH * 0.3);
+        ctx.moveTo(-slotW*0.3,-slotH*0.3); ctx.lineTo(slotW*0.3,slotH*0.3);
+        ctx.moveTo(slotW*0.3,-slotH*0.3); ctx.lineTo(-slotW*0.3,slotH*0.3);
       } else {
-        ctx.moveTo(0, -slotH * 0.35); ctx.lineTo(slotW * 0.3, slotH * 0.1);
-        ctx.lineTo(-slotW * 0.3, slotH * 0.1); ctx.closePath();
+        ctx.moveTo(0,-slotH*0.35); ctx.lineTo(slotW*0.3,slotH*0.1);
+        ctx.lineTo(-slotW*0.3,slotH*0.1); ctx.closePath();
       }
       ctx.stroke();
       ctx.restore();
@@ -807,344 +953,76 @@ class CrocodileClockDrawer {
     ctx.restore();
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 3 — Nine Chevrons — accurate trapezoidal locking design
-    // Each chevron sits proud of the ring, with a locking "claw"
+    // STEP 3 — Nine Chevrons
     // ═══════════════════════════════════════════════════════════════
-    const hourAge   = now - sg.hourFlash;
-    const CHEVRONS  = 9;
-    // Chevron 0 is at top (12 o'clock)
+    const hourAge  = now - sg.hourFlash;
+    const CHEVRONS = 9;
     for (let i = 0; i < CHEVRONS; i++) {
       const a  = (i / CHEVRONS) * Math.PI * 2 - Math.PI / 2;
       const cx = Math.cos(a) * r * 0.955;
       const cy = Math.sin(a) * r * 0.955;
-
-      // Sequential lock-on timing: each chevron locks ~0.9 s apart on the hour
       const lockDelay = i * 900;
       const isLocked  = isOnTheHour && hourAge > lockDelay && hourAge < lockDelay + 8500;
-      // Brief flash moment as it locks
       const lockFlash = isOnTheHour && hourAge > lockDelay && hourAge < lockDelay + 350;
-
       ctx.save();
       ctx.translate(cx, cy);
       ctx.rotate(a + Math.PI / 2);
-
-      const cW  = r * 0.088; // total width
-      const cH  = r * 0.130; // total height (points inward)
-      const cW2 = cW * 0.5;
-
-      // ── Outer housing block (stone surround) ──
+      const cW = r * 0.088, cH = r * 0.130, cW2 = cW * 0.5;
       ctx.beginPath();
-      ctx.moveTo(-cW2,         cH * 0.28);
-      ctx.lineTo(-cW2 * 0.72, -cH * 0.22);
-      ctx.lineTo(-cW2 * 0.38, -cH * 0.52);
-      ctx.lineTo( cW2 * 0.38, -cH * 0.52);
-      ctx.lineTo( cW2 * 0.72, -cH * 0.22);
-      ctx.lineTo( cW2,         cH * 0.28);
-      ctx.closePath();
-      const blockGrad = ctx.createLinearGradient(-cW2, -cH * 0.52, cW2, cH * 0.28);
-      blockGrad.addColorStop(0, '#3a3f45');
-      blockGrad.addColorStop(0.5, '#282c30');
-      blockGrad.addColorStop(1, '#1c1f22');
-      ctx.fillStyle = blockGrad;
-      ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.10)';
-      ctx.lineWidth   = 0.7;
-      ctx.stroke();
-
-      // ── Central chevron crystal (the glowing V-arrow) ──
-      // Shape: a flat-bottomed V pointing inward (downward in rotated space)
-      const vW  = cW * 0.70;
-      const vH  = cH * 0.72;
-      const vW2 = vW * 0.5;
+      ctx.moveTo(-cW2, cH*0.28); ctx.lineTo(-cW2*0.72,-cH*0.22);
+      ctx.lineTo(-cW2*0.38,-cH*0.52); ctx.lineTo(cW2*0.38,-cH*0.52);
+      ctx.lineTo(cW2*0.72,-cH*0.22); ctx.lineTo(cW2,cH*0.28); ctx.closePath();
+      const bg = ctx.createLinearGradient(-cW2,-cH*0.52,cW2,cH*0.28);
+      bg.addColorStop(0,'#3a3f45'); bg.addColorStop(0.5,'#282c30'); bg.addColorStop(1,'#1c1f22');
+      ctx.fillStyle = bg; ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,0.10)'; ctx.lineWidth = 0.7; ctx.stroke();
+      const vW = cW*0.70, vH = cH*0.72, vW2 = vW*0.5;
       ctx.beginPath();
-      ctx.moveTo(0,         -vH * 0.52);    // top point
-      ctx.lineTo( vW2,       vH * 0.28);    // lower right
-      ctx.lineTo( vW2 * 0.4, vH * 0.28);   // inner right
-      ctx.lineTo(0,         -vH * 0.10);    // inner V bottom
-      ctx.lineTo(-vW2 * 0.4, vH * 0.28);   // inner left
-      ctx.lineTo(-vW2,       vH * 0.28);    // lower left
+      ctx.moveTo(0,-vH*0.52); ctx.lineTo(vW2,vH*0.28); ctx.lineTo(vW2*0.4,vH*0.28);
+      ctx.lineTo(0,-vH*0.10); ctx.lineTo(-vW2*0.4,vH*0.28); ctx.lineTo(-vW2,vH*0.28);
       ctx.closePath();
-
       if (isLocked) {
-        // Glowing red when locked
-        const rg = ctx.createLinearGradient(0, -vH * 0.52, 0, vH * 0.28);
-        if (lockFlash) {
-          rg.addColorStop(0, '#FFFFFF');
-          rg.addColorStop(0.3, '#FFAAAA');
-          rg.addColorStop(1, '#FF2200');
-        } else {
-          rg.addColorStop(0, '#FF6644');
-          rg.addColorStop(0.4, '#FF2200');
-          rg.addColorStop(1, '#CC1100');
-        }
-        ctx.fillStyle   = rg;
+        const rg = ctx.createLinearGradient(0,-vH*0.52,0,vH*0.28);
+        if (lockFlash) { rg.addColorStop(0,'#FFFFFF'); rg.addColorStop(0.3,'#FFAAAA'); rg.addColorStop(1,'#FF2200'); }
+        else            { rg.addColorStop(0,'#FF6644'); rg.addColorStop(0.4,'#FF2200'); rg.addColorStop(1,'#CC1100'); }
+        ctx.fillStyle = rg;
         ctx.shadowColor = lockFlash ? 'rgba(255,200,180,1)' : 'rgba(255,50,0,0.95)';
         ctx.shadowBlur  = lockFlash ? 28 : 20;
       } else {
-        // Unlit — dark amber/crystal tint
-        const ug = ctx.createLinearGradient(0, -vH * 0.52, 0, vH * 0.28);
-        ug.addColorStop(0, '#4a4030');
-        ug.addColorStop(0.5, '#2e2818');
-        ug.addColorStop(1, '#1a1408');
-        ctx.fillStyle   = ug;
-        ctx.shadowBlur  = 0;
+        const ug = ctx.createLinearGradient(0,-vH*0.52,0,vH*0.28);
+        ug.addColorStop(0,'#4a4030'); ug.addColorStop(0.5,'#2e2818'); ug.addColorStop(1,'#1a1408');
+        ctx.fillStyle = ug; ctx.shadowBlur = 0;
       }
       ctx.fill();
-
-      // Specular highlight on the crystal
       ctx.beginPath();
-      ctx.moveTo(-vW2 * 0.25, -vH * 0.45);
-      ctx.lineTo( vW2 * 0.15, -vH * 0.10);
-      ctx.lineTo( vW2 * 0.05, -vH * 0.10);
-      ctx.lineTo(-vW2 * 0.32, -vH * 0.45);
+      ctx.moveTo(-vW2*0.25,-vH*0.45); ctx.lineTo(vW2*0.15,-vH*0.10);
+      ctx.lineTo(vW2*0.05,-vH*0.10);  ctx.lineTo(-vW2*0.32,-vH*0.45);
       ctx.closePath();
       ctx.fillStyle = isLocked ? 'rgba(255,220,200,0.45)' : 'rgba(255,255,200,0.12)';
-      ctx.shadowBlur = 0;
-      ctx.fill();
-
+      ctx.shadowBlur = 0; ctx.fill();
       ctx.restore();
     }
 
     // ═══════════════════════════════════════════════════════════════
-    // STEP 4 — Portal: high-fidelity standing-wave puddle
-    //
-    // The Stargate event horizon is a VERTICAL wall of liquid —
-    // silver-blue mercury-like fluid with concentric standing waves
-    // that ripple outward from centre. The palette is:
-    //   • Near-black void between wave crests
-    //   • Bright silver-white at crest peaks (light catching the wave lip)
-    //   • Iridescent cyan-blue mid-tones in the troughs
-    //   • Bright white blow-out at the central origin
-    // Occasional "kawoosh" burst: on every new minute a fast
-    // outward wave-burst fires from centre.
+    // STEP 4 — Blit fluid-simulation portal into the circular opening
     // ═══════════════════════════════════════════════════════════════
+    const pd = rPortal * 2;
     ctx.save();
     ctx.beginPath(); ctx.arc(0, 0, rPortal, 0, Math.PI * 2); ctx.clip();
+    // Scale the SIM_W×SIM_W offscreen canvas up to fill the portal circle
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(sg.offCanvas, -rPortal, -rPortal, pd, pd);
 
-    // ── 1. Black void base ────────────────────────────────────────
-    ctx.fillStyle = '#000508';
-    ctx.fillRect(-rPortal, -rPortal, rPortal * 2, rPortal * 2);
-
-    // ── 2. Deep radial colour wash (the "depth" of the portal) ────
-    // Slow-breathing radial that shifts between deep cobalt and black
-    const breathe  = Math.sin(T * 0.55) * 0.5 + 0.5;   // 0→1, ~11 s cycle
-    const breathe2 = Math.sin(T * 0.38 + 1.2) * 0.5 + 0.5;
-    const depthGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, rPortal);
-    depthGrad.addColorStop(0,    `rgba(15,55,110,${0.55 + breathe * 0.20})`);
-    depthGrad.addColorStop(0.22, `rgba(8,35,80,${0.70 + breathe2 * 0.12})`);
-    depthGrad.addColorStop(0.50, `rgba(3,12,35,0.82)`);
-    depthGrad.addColorStop(0.80, `rgba(1,4,14,0.92)`);
-    depthGrad.addColorStop(1,    'rgba(0,1,6,1)');
-    ctx.fillStyle = depthGrad;
-    ctx.fillRect(-rPortal, -rPortal, rPortal * 2, rPortal * 2);
-
-    // ── 3. STANDING WAVE RINGS — the heart of the puddle ──────────
-    // The show's puddle has ~6-8 visible concentric wave crests that
-    // are always present (standing waves), slowly drifting outward.
-    // Each "band" oscillates between trough (dark) and crest (bright).
-    // We render this by drawing filled annular bands, alternating dark/bright.
-    //
-    // Wave phase drifts slowly outward over time — gives the illusion
-    // of continuous outward propagation even without discrete ripples.
-    const waveSpeed    = 0.18;   // rings drift outward slowly (units: normalised radius/sec)
-    const wavePhase    = (T * waveSpeed) % 1.0;  // 0→1 continuous drift
-    const NUM_WAVES    = 9;      // number of concentric wave bands to render
-    const waveMaxR     = rPortal * 0.97;
-
-    for (let w = 0; w < NUM_WAVES; w++) {
-      // Each wave band sits at a specific normalised radius, offset by drift phase
-      const normR      = ((w / NUM_WAVES) + wavePhase) % 1.0;
-      const wR         = normR * waveMaxR;
-      // Width of each band — narrower at edge (perspective foreshortening)
-      const bandFrac   = (1.0 / NUM_WAVES) * waveMaxR;
-      const innerR     = Math.max(0, wR - bandFrac * 0.5);
-      const outerR     = wR + bandFrac * 0.5;
-
-      // Brightness: waves near centre are brighter (light source behind gate)
-      // Crest brightness also pulses with a secondary oscillation
-      const centreFade = 1 - Math.pow(normR, 1.4);   // bright at centre, dark at edge
-      const crestPulse = Math.sin(normR * Math.PI * 2 - T * 1.8 + w * 0.7) * 0.5 + 0.5;
-
-      // The crest (outermost part of each band) is bright silver-white
-      // The trough (inner part of each band) is deep blue-black
-      const crestAlpha = (0.18 + crestPulse * 0.55) * centreFade;
-      const troughAlpha = (0.35 + (1 - crestPulse) * 0.25) * centreFade;
-
-      if (innerR >= outerR || outerR <= 0) continue;
-
-      // Trough fill (dark, inner part of band)
-      const troughG = ctx.createRadialGradient(0, 0, innerR, 0, 0, outerR);
-      troughG.addColorStop(0,   `rgba(0,6,20,${troughAlpha})`);
-      troughG.addColorStop(0.5, `rgba(2,15,50,${troughAlpha * 0.6})`);
-      troughG.addColorStop(1,   `rgba(0,0,0,0)`);
-      ctx.fillStyle = troughG;
-      ctx.beginPath();
-      ctx.arc(0, 0, outerR, 0, Math.PI * 2);
-      if (innerR > 0) { ctx.arc(0, 0, innerR, 0, Math.PI * 2, true); }
-      ctx.fill('evenodd');
-
-      // Crest stroke — the bright silver lip at the top of each wave
-      // This is the most characteristic feature: sharp bright ring on dark bg
-      const crestR = outerR * 0.995;
-      if (crestR > 0.5) {
-        ctx.save();
-        ctx.beginPath(); ctx.arc(0, 0, crestR, 0, Math.PI * 2);
-        // Main bright crest line
-        ctx.strokeStyle = `rgba(200,230,255,${crestAlpha * 1.0})`;
-        ctx.lineWidth   = Math.max(0.4, (1.2 + centreFade * 1.8) * (0.5 + crestPulse * 0.5));
-        ctx.shadowColor = `rgba(140,210,255,${crestAlpha * 0.8})`;
-        ctx.shadowBlur  = 3 + centreFade * 6;
-        ctx.stroke();
-        // Secondary soft glow halo just inside the crest
-        ctx.beginPath(); ctx.arc(0, 0, crestR * 0.97, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(100,180,255,${crestAlpha * 0.45})`;
-        ctx.lineWidth   = 1.0 + centreFade * 1.2;
-        ctx.shadowBlur  = 0;
-        ctx.stroke();
-        ctx.restore();
-      }
-    }
-
-    // ── 4. DISCRETE OUTWARD RIPPLES (triggered events) ────────────
-    // These fire on top of the standing waves. Each is a fast-moving
-    // ring that expands from centre — brighter and thicker than the
-    // ambient standing waves, representing an energy pulse.
-    sg.ripples.forEach(rp => {
-      if (now < rp.born) return;
-      const life = 2200;
-      const age  = (now - rp.born) / life;
-      if (age > 1) return;
-
-      // Fast initial expansion that eases off — matches the show's kawoosh physics
-      // The wave front accelerates then decelerates as it hits the edge
-      const eased = age < 0.3
-        ? (age / 0.3) * 0.55                              // fast initial burst
-        : 0.55 + (1 - Math.pow(1 - (age - 0.3) / 0.7, 2.2)) * 0.45; // ease to edge
-      const wR    = eased * rPortal * 0.97;
-      const fade  = rp.opacity * Math.pow(1 - age, 0.7); // stays bright longer, sharp fade at end
-
-      // Each discrete ripple has 5 sub-rings: shadow-trough, main crest, inner crest, glow halo, outer shadow
-      const rings = [
-        // [radiusMult, lineWidth, r,   g,   b,   alpha_mult, blur]
-        [1.030,  1.8, 0,   0,   0,   0.90, 0],   // leading shadow (dark void)
-        [1.012,  2.4, 220, 240, 255, 1.00, 6],   // main crest (bright silver-white)
-        [1.000,  1.4, 180, 220, 255, 0.80, 3],   // second crest line
-        [0.988,  0.9, 100, 180, 255, 0.55, 2],   // inner glow
-        [0.970,  1.2, 0,   0,   0,   0.65, 0],   // trailing trough shadow
-      ];
-
-      rings.forEach(([rm, lw, rc, gc, bc, am, blur]) => {
-        const ringR = wR * rm;
-        if (ringR < 0.5 || ringR > rPortal * 1.02) return;
-        ctx.save();
-        ctx.beginPath(); ctx.arc(0, 0, ringR, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(${rc},${gc},${bc},${fade * am})`;
-        ctx.lineWidth   = lw * (0.5 + (1 - age) * 0.8);
-        if (blur > 0) { ctx.shadowColor = `rgba(${rc},${gc},${bc},${fade * am * 0.6})`; ctx.shadowBlur = blur; }
-        ctx.stroke();
-        ctx.restore();
-      });
-    });
-
-    // ── 5. KAWOOSH BURST — initial energy splash at centre ────────
-    // On each minute transition: a bright radial energy burst erupts
-    // from the centre outward over ~0.4 s before the ripple waves start.
-    sg.swooshes.forEach(sw => {
-      const burstLife = 1400;
-      const age  = (now - sw.born) / burstLife;
-      if (age > 1) return;
-
-      // Phase 1 (0→0.3): blinding white centre flash
-      // Phase 2 (0.3→0.7): the "kawoosh" arm sweeps outward  
-      // Phase 3 (0.7→1.0): fades to leave ripples
-      if (age < 0.35) {
-        // Central flash — bright white-cyan blowout
-        const flashAge = age / 0.35;
-        const flashR   = rPortal * (0.08 + flashAge * 0.55);
-        const flashA   = (1 - flashAge) * 0.92;
-        const fg = ctx.createRadialGradient(0, 0, 0, 0, 0, flashR);
-        fg.addColorStop(0,    `rgba(255,255,255,${flashA})`);
-        fg.addColorStop(0.25, `rgba(220,245,255,${flashA * 0.85})`);
-        fg.addColorStop(0.60, `rgba(100,200,255,${flashA * 0.45})`);
-        fg.addColorStop(1,    'rgba(20,80,200,0)');
-        ctx.fillStyle = fg;
-        ctx.fillRect(-rPortal, -rPortal, rPortal * 2, rPortal * 2);
-      } else {
-        // Kawoosh arm — a rotating energy arc that sweeps outward
-        const armAge   = (age - 0.35) / 0.65;
-        const armFade  = Math.pow(1 - armAge, 1.4);
-        const armR     = rPortal * (0.30 + armAge * 0.68);
-        const armSpan  = Math.PI * (0.6 + armAge * 0.9);
-        const armAngle = sw.angle + sw.dir * armAge * Math.PI * 3.5;
-
-        // Glow arc
-        ctx.save();
-        ctx.beginPath();
-        ctx.arc(0, 0, armR, armAngle, armAngle + sw.dir * armSpan);
-        ctx.strokeStyle = `rgba(180,235,255,${armFade * 0.65})`;
-        ctx.lineWidth   = (1 - armAge) * 9 + 2;
-        ctx.lineCap     = 'round';
-        ctx.shadowColor = `rgba(100,210,255,${armFade})`;
-        ctx.shadowBlur  = 18;
-        ctx.stroke();
-        // Bright crest on the arm
-        ctx.beginPath();
-        ctx.arc(0, 0, armR * 0.985, armAngle + sw.dir * 0.1, armAngle + sw.dir * (armSpan - 0.1));
-        ctx.strokeStyle = `rgba(240,250,255,${armFade * 0.80})`;
-        ctx.lineWidth   = (1 - armAge) * 3.5 + 0.5;
-        ctx.shadowBlur  = 8;
-        ctx.stroke();
-        // Secondary inner arc (trailing)
-        ctx.beginPath();
-        ctx.arc(0, 0, armR * 0.930, armAngle + sw.dir * 0.3, armAngle + sw.dir * (armSpan * 0.75));
-        ctx.strokeStyle = `rgba(80,180,255,${armFade * 0.40})`;
-        ctx.lineWidth   = (1 - armAge) * 4 + 1;
-        ctx.shadowBlur  = 5;
-        ctx.stroke();
-        ctx.restore();
-      }
-    });
-
-    // ── 6. SURFACE IRIDESCENCE — moving light across the puddle ───
-    // Thin, fast-moving streaks of brighter light that drift across
-    // the surface, like light caustics on the back of a wave.
-    for (let streak = 0; streak < 5; streak++) {
-      const sPhase = T * (0.12 + streak * 0.07) + streak * 2.5;
-      const sNorm  = (sPhase % 1.0);
-      const sR     = sNorm * rPortal * 0.94;
-      const sA     = Math.sin(sNorm * Math.PI) * (0.08 + streak * 0.012);
-      if (sR < 1) continue;
-      ctx.save();
-      ctx.beginPath(); ctx.arc(0, 0, sR, 0, Math.PI * 2);
-      ctx.strokeStyle = `rgba(180,225,255,${sA})`;
-      ctx.lineWidth   = 0.6 + streak * 0.2;
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // ── 7. CENTRAL ORIGIN GLOW — always-on white-hot centre ───────
-    // The gate's event horizon always has a persistently bright core
-    // that pulses gently — this is where the wormhole is "deepest"
-    const corePulse  = Math.sin(T * 1.35) * 0.5 + 0.5;
-    const coreRadius = rPortal * (0.055 + corePulse * 0.035);
-    const coreGrad   = ctx.createRadialGradient(0, 0, 0, 0, 0, rPortal * 0.38);
-    coreGrad.addColorStop(0,    `rgba(255,255,255,${0.75 + corePulse * 0.20})`);
-    coreGrad.addColorStop(0.08, `rgba(230,248,255,${0.55 + corePulse * 0.15})`);
-    coreGrad.addColorStop(0.22, `rgba(140,210,255,${0.30 + corePulse * 0.10})`);
-    coreGrad.addColorStop(0.55, `rgba(30,100,200,0.12)`);
-    coreGrad.addColorStop(1,    'rgba(0,10,40,0)');
-    ctx.fillStyle = coreGrad;
-    ctx.fillRect(-rPortal, -rPortal, rPortal * 2, rPortal * 2);
-
-    // Hard bright centre point
-    ctx.save();
-    ctx.beginPath(); ctx.arc(0, 0, coreRadius, 0, Math.PI * 2);
-    ctx.fillStyle   = `rgba(255,255,255,${0.70 + corePulse * 0.25})`;
-    ctx.shadowColor = 'rgba(180,230,255,0.95)';
-    ctx.shadowBlur  = 18;
-    ctx.fill();
-    ctx.restore();
-
+    // Bright persistent centre glow drawn on top of the simulation
+    const corePulse = Math.sin(T * 1.35) * 0.5 + 0.5;
+    const cg = ctx.createRadialGradient(0,0,0,0,0,rPortal*0.30);
+    cg.addColorStop(0,    `rgba(255,255,255,${0.55 + corePulse*0.20})`);
+    cg.addColorStop(0.15, `rgba(210,245,255,${0.30 + corePulse*0.10})`);
+    cg.addColorStop(0.50, `rgba(80,160,255,0.08)`);
+    cg.addColorStop(1,    'rgba(0,20,80,0)');
+    ctx.fillStyle = cg;
+    ctx.fillRect(-rPortal,-rPortal,pd,pd);
     ctx.restore(); // end portal clip
 
     // ═══════════════════════════════════════════════════════════════
