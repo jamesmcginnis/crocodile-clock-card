@@ -1694,8 +1694,13 @@ class CrocodileClockCard extends HTMLElement {
         display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: '2px',
       });
 
-      const firstDay      = new Date(viewYear, viewMonth, 1);
-      const startOffset   = (firstDay.getDay() + 6) % 7;
+      // Get day-of-week for the 1st using Intl (timezone-safe, no midnight rollover risk).
+      // weekday:'short' with locale en-US gives Sun/Mon/Tue… then we map to 0-6 Mon-first.
+      const DOW_MAP = { Sun:6, Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5 };
+      const firstOfMonth  = new Date(viewYear, viewMonth, 1, 12, 0, 0); // noon avoids DST edge
+      const dowStr        = new Intl.DateTimeFormat('en-US', { weekday:'short', timeZone: tz })
+                              .format(firstOfMonth);
+      const startOffset   = DOW_MAP[dowStr] ?? (firstOfMonth.getDay() + 6) % 7;
       const daysInMonth   = new Date(viewYear, viewMonth + 1, 0).getDate();
       const prevMonthDays = new Date(viewYear, viewMonth, 0).getDate();
 
