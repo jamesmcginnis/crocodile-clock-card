@@ -1,197 +1,185 @@
-# Crocodile Clock Card
+# 🐬 Dolphin Diabetes Card
 
-A custom Home Assistant Lovelace card featuring a fully customisable analog clock with twelve distinct clock faces, a smooth sweep or mechanical tick second hand, live Home Assistant calendar events, and a glassmorphic popup with a large digital clock, interactive calendar, and optional link. Long-press the clock to switch faces instantly — the choice saves automatically.
+A sleek [Home Assistant](https://www.home-assistant.io/) dashboard card for monitoring blood glucose levels. Displays your current reading, trend direction, a 30-minute glucose forecast, optionally animated breathing rings, a sensor life countdown, and an optional historical graph — all configurable without writing a single line of YAML.
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
-
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=jamesmcginnis&repository=crocodile-clock-card&category=plugin)
-
----
-
-## Features
-
-- **Twelve clock faces** — Classic, Minimal, Roman, Modern, Luxury, Skeleton, Neon, Retro, Sport, Art Deco, Celestial, Stargate
-- **Animated Stargate face** — rotating glyph ring, chevrons that light up as hands pass, every-5-second chevron pulses, full-minute all-chevron flash, and a live water-ripple portal
-- **Long-press face selector** — switch faces instantly from the card; the choice is saved permanently to your dashboard YAML
-- **Smooth or Tick second hand** — true continuous sweep or damped-spring mechanical tick with realistic overshoot and recoil
-- **Seven colour pickers** — full control over the card background, dial, text and marks, hour hand, minute hand, second hand, and accent colour
-- **Transparent background** support with adjustable opacity (10–100%)
-- **Tap-to-open popup** — glassmorphic overlay with a large digital clock (12 hr / 24 hr) and full date
-- **Interactive calendar** — monthly grid, Monday-first, with month navigation; tap any date to see its events
-- **Home Assistant calendar integration** — fetches events directly from a configured calendar entity and displays them below the calendar grid
-- **Optional popup link** — configure a URL that appears as a button at the bottom of the popup
-- **Optional date display** below the clock on the card face
-- **Full visual editor** — no YAML required
+[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg?style=for-the-badge&logo=homeassistantcommunitystore&logoColor=white)](https://hacs.xyz)
+[![HA Version](https://img.shields.io/badge/Home%20Assistant-2024.1%2B-41BDF5?style=for-the-badge&logo=homeassistant&logoColor=white)](https://www.home-assistant.io/)
+![Custom Card](https://img.shields.io/badge/Dashboard-Custom%20Card-white?style=for-the-badge&logo=homeassistant&logoColor=41BDF5)
 
 ---
 
-## Installation
+## ✨ Features
 
-### HACS (recommended)
-
-Click the button above, or:
-
-1. In HACS → Frontend, click the three-dot menu → **Custom repositories**
-1. Add `https://github.com/jamesmcginnis/crocodile-clock-card` with category **Frontend**
-1. Install **Crocodile Clock Card**
-1. Refresh your browser
-
-### Manual
-
-1. Download `crocodile-clock-card.js` from this repository
-1. Copy it to `/config/www/crocodile-clock-card.js`
-1. In Home Assistant → Settings → Dashboards → Resources, add:
-   - URL: `/local/crocodile-clock-card.js`
-   - Type: JavaScript module
-1. Refresh your browser
+- **Dual animated rings** — glucose level ring on the left, trend direction ring on the right, with an optional breathing glow that pulses in the current status colour
+- **Colour-coded readings** — green in range · red when low · amber when high, applied to both rings, the glucose number, and the trend label
+- **30-minute glucose forecast** — estimates where your glucose is likely to be in 30 minutes using a weighted linear regression over the last 40 minutes of readings; colour-coded to your configured thresholds
+- **Forecast popup** — tap the 30-min pill for a friendly, contextual message depending on whether your estimated glucose is low, high, or in range, along with a projected change from current
+- **Sensor life countdown** — optional pill showing days remaining on your current sensor, turns red on the last day
+- **Sensor unavailable state** — everything fades to grey when the sensor is offline or unavailable
+- **Trend ring** — fill level and label reflect direction (Rising Fast → Steady → Falling Fast) without cluttering the card with arrows
+- **Tap for details** — single tap opens an elegant popup with a large reading, trend ring, time range selector (1h–24h), history graph, and live sensor attributes
+- **Long press for more info** — opens the native Home Assistant entity detail screen
+- **Historical graph** — colour-coded line segments, threshold guide lines, and gradient fill fetched directly from the HA history API
+- **Stale reading warning** — timestamp in the header turns amber when data is older than 15 minutes
+- **Full visual editor** — every option configurable from the UI, no YAML required
 
 ---
 
-## Configuration
+## 🚀 Installation
 
-The card has a full visual editor — click the pencil icon after adding it to a dashboard. You can also configure it directly in YAML:
+### Via HACS (Recommended)
+
+Click the button below to add this repository to HACS:
+
+[![Add to HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=jamesmcginnis&repository=dolphin-diabetes-card&category=plugin)
+
+Then:
+
+1. Open **HACS** in Home Assistant
+2. Go to **Frontend**
+3. Search for **Dolphin Diabetes Card**
+4. Click **Download**
+5. Reload your browser
+
+### Manual Installation
+
+1. Download `dolphin-diabetes-card.js` from the [latest release](../../releases/latest)
+2. Copy it to `/config/www/dolphin-diabetes-card.js`
+3. In Home Assistant go to **Settings → Dashboards → Resources**
+4. Add a new resource:
+   - URL: `/local/dolphin-diabetes-card.js`
+   - Type: **JavaScript module**
+5. Reload your browser
+
+---
+
+## 🛠️ Configuration
+
+Add a new card to your dashboard, choose **Manual** and use:
 
 ```yaml
-type: custom:crocodile-clock-card
-face: classic
-show_seconds: true
-seconds_style: smooth
-popup_format: "12"
-card_background: "#1C1C1E"
-card_opacity: 88
-dial_color: "#1C1C1E"
-dial_text_color: "#FFFFFF"
-hour_hand_color: "#FFFFFF"
-minute_hand_color: "#FFFFFF"
-second_hand_color: "#FF3B30"
-accent_color: "#007AFF"
-show_date: false
-popup_url: ""
-calendar_entity: calendar.home
+type: custom:dolphin-diabetes-card
+glucose_entity: sensor.your_glucose_sensor
+trend_entity: sensor.your_trend_sensor
 ```
 
-### Options
+Everything else can be configured through the built-in visual editor. For manual YAML, all options are listed below.
 
-| Option              | Type    | Default          | Description                                                                                         |
-|---------------------|---------|------------------|-----------------------------------------------------------------------------------------------------|
-| `face`              | string  | `classic`        | Clock face: `classic`, `minimal`, `roman`, `modern`, `luxury`, `skeleton`, `neon`, `retro`, `sport`, `art_deco`, `celestial`, `stargate` |
-| `show_seconds`      | boolean | `true`           | Show or hide the second hand                                                                        |
-| `seconds_style`     | string  | `smooth`         | Second hand mode: `smooth` (continuous sweep) or `tick` (mechanical spring)                        |
-| `popup_format`      | string  | `12`             | Digital clock format in the popup: `12` or `24`                                                    |
-| `card_background`   | string  | `#1C1C1E`        | Card background colour, or `transparent` to show through to the dashboard                          |
-| `card_opacity`      | number  | `88`             | Background opacity as a percentage (10–100). Ignored when transparent                              |
-| `dial_color`        | string  | `#1C1C1E`        | Clock dial fill colour                                                                              |
-| `dial_text_color`   | string  | `#FFFFFF`        | Colour of numerals, indices, and tick marks on the dial                                            |
-| `hour_hand_color`   | string  | `#FFFFFF`        | Hour hand colour                                                                                    |
-| `minute_hand_color` | string  | `#FFFFFF`        | Minute hand colour                                                                                  |
-| `second_hand_color` | string  | `#FF3B30`        | Second hand and centre cap colour                                                                   |
-| `accent_color`      | string  | `#007AFF`        | Accent colour used for glow, calendar today highlight, and the popup colon pulse                   |
-| `show_date`         | boolean | `false`          | Show the current date below the clock on the card face                                             |
-| `popup_url`         | string  | `""`             | URL to open as a link at the bottom of the popup. Leave blank to disable                           |
-| `popup_url_title`   | string  | `""`             | Custom label for the popup link. Defaults to the hostname if left blank                            |
-| `calendar_entity`   | string  | `calendar.home`  | Home Assistant calendar entity to fetch events from                                                |
+### Full Options
 
----
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `glucose_entity` | `string` | **required** | Entity ID of your glucose sensor |
+| `trend_entity` | `string` | — | Entity ID of your trend direction sensor |
+| `unit` | `mmol` \| `mgdl` | `mmol` | Glucose unit of measurement |
+| `low_threshold` | `number` | `3.9` | Low glucose threshold (mmol/L or mg/dL) |
+| `high_threshold` | `number` | `10.0` | High glucose threshold |
+| `show_title` | `boolean` | `true` | Show the card title |
+| `title` | `string` | `Blood Sugar` | Card title text |
+| `show_graph` | `boolean` | `true` | Show the historical blood sugar graph on the card |
+| `graph_hours` | `1\|3\|6\|12\|24` | `3` | Default hours of history to display |
+| `breathing_effect` | `boolean` | `true` | Enable the pulsing glow animation on the rings and sensor pill |
+| `show_sensor_life` | `boolean` | `false` | Show the sensor life countdown pill |
+| `sensor_start_date` | `string` | — | ISO datetime when you applied the current sensor |
+| `sensor_duration_days` | `number` | `14` | How many days the sensor lasts |
+| `accent_color` | `string` | `#007AFF` | Ring and highlight colour |
+| `normal_color` | `string` | `#34C759` | In-range reading colour |
+| `low_color` | `string` | `#FF3B30` | Low reading colour |
+| `high_color` | `string` | `#FF9500` | High reading colour |
+| `graph_line_color` | `string` | `#007AFF` | Graph line colour |
+| `graph_fill_color` | `string` | `#007AFF` | Graph area fill colour |
+| `sensor_pill_bg` | `string` | `#2c2c2e` | Sensor life pill background colour |
+| `sensor_pill_normal_color` | `string` | `#34C759` | Sensor pill text colour when days remain |
+| `sensor_pill_urgent_color` | `string` | `#FF3B30` | Sensor pill text colour on last day |
+| `card_bg` | `string` | `#1c1c1e` | Card background colour (use 8-digit hex for custom opacity, e.g. `#1c1c1e80`) |
+| `card_bg_opacity` | `number` | `80` | Card background opacity (0–100) |
+| `text_color` | `string` | `#ffffff` | Primary text colour |
 
-## Clock Faces
+### Example with all options
 
-### Classic
-Arabic numerals at all twelve positions with tapered hour and minute hands. A traditional, readable clock face.
-
-### Minimal
-Dot indices only — no numerals. Clean stick hands with no taper. Best suited to minimalist dashboards.
-
-### Roman
-Roman numerals (I through XII) with tapered hands. A traditional face with a formal look.
-
-### Modern
-Bold Arabic numerals at the four quarter positions (12, 3, 6, 9) with accent-coloured tick marks at the remaining positions. Tapered hands.
-
-### Luxury
-Baton indices replacing numerals, rendered in gold with a highlight stripe along each baton. Baton-style hands with a matching highlight. Inspired by high-end mechanical watch design.
-
-### Skeleton
-Diamond-shaped markers at each hour position with structural decorative rings on the dial face. Tapered hands. Suited to technical or dark dashboards.
-
-### Neon
-Glowing canvas effects using the accent colour. Marker dots and hands are rendered with a multi-layer glow, with a bright white core on the hands for a neon tube effect. Works best with a vivid accent colour against a dark dial.
-
-### Retro
-Vintage-inspired Roman numerals with a warm, aged aesthetic and classic hand styling.
-
-### Sport
-Bold geometric bar markers with strong contrast hands designed for high-legibility at a glance.
-
-### Art Deco
-Pointed gold indices tapering to a fine tip, paired with serif numerals at the quarter positions. Inspired by 1920s and 1930s decorative design.
-
-### Celestial
-Multi-pointed star markers at each hour position with a deep-space aesthetic. The accent colour drives the star glow. Works particularly well with dark dials and gold or warm accent colours.
-
-### Stargate
-A fully animated gate face. Features include:
-
-- A rotating outer ring of 39 randomised glyph slots
-- Twelve chevrons at the hour positions that glow red as the hour, minute, and second hands sweep over them
-- A chevron pulse every five seconds as the second hand crosses each hour marker
-- A simultaneous all-chevron flash on each new minute
-- A kawoosh burst ripple effect on each new minute
-- A dark perspective-foreshortened water portal with animated silver-crested ripples and a pulsing blue event-horizon rim
+```yaml
+type: custom:dolphin-diabetes-card
+glucose_entity: sensor.dexcom_glucose
+trend_entity: sensor.dexcom_trend
+unit: mmol
+low_threshold: 3.9
+high_threshold: 10.0
+show_title: true
+title: Blood Sugar
+show_graph: true
+graph_hours: 3
+breathing_effect: true
+show_sensor_life: true
+sensor_start_date: "2026-03-14T09:00:00.000Z"
+sensor_duration_days: 14
+accent_color: "#007AFF"
+normal_color: "#34C759"
+low_color: "#FF3B30"
+high_color: "#FF9500"
+graph_line_color: "#007AFF"
+graph_fill_color: "#007AFF"
+sensor_pill_bg: "#2c2c2e"
+sensor_pill_normal_color: "#34C759"
+sensor_pill_urgent_color: "#FF3B30"
+card_bg: "#1c1c1e"
+card_bg_opacity: 80
+text_color: "#ffffff"
+```
 
 ---
 
-## Second Hand Modes
+## 👆 Interactions
 
-### Smooth
-The second hand moves continuously with no visible steps between positions. One full rotation every 60 seconds with no pausing, jumping, or ticking.
-
-### Tick
-A damped-spring animation. On each new second the hand jumps slightly past the target position and then springs back, producing a natural overshoot and recoil. The effect closely resembles the feel of a well-tuned mechanical movement.
-
----
-
-## Long-Press Face Selector
-
-Long-pressing the clock (hold for approximately 0.6 seconds) opens an overlay grid showing all twelve clock faces. Tap any face to switch instantly — the card updates live and the selection is written back to your dashboard configuration automatically, so the chosen face persists across page reloads without any manual YAML editing.
+| Gesture | Action |
+|---|---|
+| **Tap** | Opens a detail popup with large reading, trend ring, selectable graph time range (1h–24h), and sensor attributes |
+| **Tap 30-min pill** | Opens a friendly forecast popup showing your estimated glucose in 30 minutes, projected change, and contextual guidance if trending low or high |
+| **Tap trend ring** | Opens a trend history popup showing the last 50 trend readings with timestamps |
+| **Tap sensor pill** | Opens a sensor life popup with applied date, expiry date, time remaining, and a progress ring |
+| **Long press** | Opens the native Home Assistant more-info panel for the glucose entity |
 
 ---
 
-## Tap Popup
+## 🔮 30-Minute Glucose Forecast
 
-Tapping anywhere on the clock opens a popup overlay with:
+The forecast pill sits between the two rings and estimates where your glucose is likely to be in 30 minutes. It uses a **weighted linear regression** over the last 40 minutes of readings from the HA history API, giving more weight to the most recent data points. The result is clamped to a sensible range and colour-coded using your configured low and high thresholds.
 
-- **Large digital time** — displayed in the format selected in the visual editor (12-hour with AM/PM, or 24-hour)
-- **Full date line** — day of week, date, month, and year
-- **Interactive calendar** — monthly grid, Monday-first, with navigation arrows
-- **Calendar events** — tap any date to fetch and display events from your configured Home Assistant calendar entity below the grid
-- **Optional link** — if a URL is configured, a styled button appears at the bottom of the popup
+Tapping the pill opens a friendly popup with:
 
-The current day is highlighted with a filled circle in the accent colour. The popup can be closed with the × button, by tapping outside it, or by pressing Escape.
+- Your estimated glucose value and unit
+- Whether it's projected to be low, in range, or high
+- A projected change from your current reading
+- A short, friendly message appropriate to the forecast — with a gentle reminder to follow your personal care plan if things look like they're heading out of range
 
----
-
-## Calendar Events
-
-Set `calendar_entity` in the card configuration to a Home Assistant calendar entity (for example `calendar.home`). When the popup is open, tapping any date fetches events for that day directly from the Home Assistant calendar API and displays them below the calendar grid, including event titles, times, and locations where available.
+> **Note:** This is an estimate based on recent trend data, not a clinical measurement. Always follow your personal diabetes management plan.
 
 ---
 
-## Colours
+## 🩸 Supported Integrations
 
-Seven colour pickers in the visual editor control every visual element of the card.
+The card works with any Home Assistant sensor that provides a numeric glucose value. Tested with:
 
-**Card Background** includes an optional **None** setting that makes the card surface fully transparent, allowing your dashboard background to show through. When a colour is selected, an opacity slider (10–100%) controls how opaque the background appears — useful for layering the clock over a background image or coloured panel.
+- [Dexcom](https://www.home-assistant.io/integrations/dexcom/) (built-in HA integration)
+- [Nightscout](https://github.com/dhomeier/nightscout-hacs) via HACS
+- [xDrip+](https://github.com/blobsmith/xdrip) via MQTT or REST sensor
+- Any `sensor` entity whose `state` is a numeric glucose value
 
-The **Accent / Highlight** colour is used in several places: the glow and marker colour in the Neon face, the tick marks in the Modern face, the star glow in the Celestial face, the event-horizon rim in the Stargate face, the today highlight circle in the popup calendar, and the pulsing colon in the digital clock display.
+### Supported Trend Values
+
+The card automatically detects trend direction from a wide range of state strings:
+
+`rising_quickly` · `rising` · `rising_slightly` · `flat` · `falling_slightly` · `falling` · `falling_quickly`
+
+Dexcom-style values are also supported: `doubleUp` · `singleUp` · `fortyFiveUp` · `flat` · `fortyFiveDown` · `singleDown` · `doubleDown`
 
 ---
 
-## Requirements
+## 📄 License
 
-- Home Assistant 2023.1.0 or later
+MIT License — free to use, modify, and distribute.
 
 ---
 
-## License
-
-MIT — see [LICENSE](LICENSE)
+<p align="center">
+  Made with ❤️ for the diabetes community
+</p>
