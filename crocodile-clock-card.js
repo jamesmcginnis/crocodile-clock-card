@@ -1293,17 +1293,6 @@ class CrocodileClockCard extends HTMLElement {
       justifyContent: 'space-between', marginBottom: '16px',
     });
 
-    const titleEl = document.createElement('div');
-    titleEl.textContent = 'Clock Face';
-    Object.assign(titleEl.style, { fontSize: '18px', fontWeight: '700', letterSpacing: '-0.3px' });
-
-    const hintEl = document.createElement('div');
-    hintEl.textContent = 'Hold to switch • Save in editor';
-    Object.assign(hintEl.style, {
-      fontSize: '11px', color: 'rgba(255,255,255,0.35)',
-      fontWeight: '500', marginLeft: '10px', flex: '1',
-    });
-
     const closeBtn = document.createElement('button');
     Object.assign(closeBtn.style, {
       background: 'rgba(255,255,255,0.09)', border: 'none', borderRadius: '50%',
@@ -1314,10 +1303,22 @@ class CrocodileClockCard extends HTMLElement {
     });
     closeBtn.textContent = '✕';
 
+    const titleEl = document.createElement('div');
+    titleEl.textContent = 'Choose Your Clock Face';
+    Object.assign(titleEl.style, { fontSize: '20px', fontWeight: '700', letterSpacing: '-0.4px', flex: '1' });
+
     hdr.appendChild(titleEl);
-    hdr.appendChild(hintEl);
     hdr.appendChild(closeBtn);
     panel.appendChild(hdr);
+
+    // Friendly subtitle
+    const subEl = document.createElement('div');
+    subEl.textContent = 'Tap any style below to switch instantly. Your choice will apply straight away — if you love it, save it in the card editor to make it permanent.';
+    Object.assign(subEl.style, {
+      fontSize: '13px', color: 'rgba(255,255,255,0.42)', lineHeight: '1.55',
+      marginBottom: '16px', fontWeight: '400',
+    });
+    panel.appendChild(subEl);
 
     // 4×3 grid of face options
     const grid = document.createElement('div');
@@ -1788,7 +1789,8 @@ class CrocodileClockCardEditor extends HTMLElement {
     if (this.shadowRoot.children.length) this._buildEditor();
   }
 
-  set hass(_h) {
+  set hass(h) {
+    this._hass = h;
     if (!this.shadowRoot.children.length) this._buildEditor();
   }
 
@@ -1815,7 +1817,7 @@ class CrocodileClockCardEditor extends HTMLElement {
         <!-- ── Clock Face ── -->
         <div>
           <div class="section-title">Clock Face</div>
-          <div class="hint" style="margin-bottom:6px">💡 Long-press the card to switch faces without opening the editor.</div>
+          <div class="hint" style="margin-bottom:6px">💡 Tip: Hold your finger on the clock card to preview and switch faces without opening the editor.</div>
           <div class="card-block">
             <div class="face-grid">${faceGrid}</div>
           </div>
@@ -1922,14 +1924,12 @@ class CrocodileClockCardEditor extends HTMLElement {
 
         <!-- ── Calendar Entity ── -->
         <div>
-          <div class="section-title">Calendar Entity</div>
+          <div class="section-title">Calendar</div>
           <div class="card-block">
             <div class="select-row">
-              <label>Entity ID</label>
-              <div class="hint" style="margin-bottom:8px;">The Home Assistant calendar entity to show events from when you tap a date in the popup. Defaults to <b>calendar.home</b>.</div>
-              <input type="text" id="cc_calendar_entity"
-                placeholder="calendar.home"
-                value="${cfg.calendar_entity || 'calendar.home'}">
+              <label>Which calendar to show events from?</label>
+              <div class="hint" style="margin-bottom:10px;">When you tap a date in the popup, events from this calendar will appear below. Pick one from your connected calendars.</div>
+              ${this._buildCalendarSelect(cfg.calendar_entity || 'calendar.home')}
             </div>
           </div>
         </div>
@@ -1962,6 +1962,54 @@ class CrocodileClockCardEditor extends HTMLElement {
     `;
 
     this._wire();
+  }
+
+  _buildCalendarSelect(current) {
+    // Gather all calendar.* entities from hass, sorted alphabetically
+    const entities = this._hass
+      ? Object.keys(this._hass.states)
+          .filter(e => e.startsWith('calendar.'))
+          .sort()
+      : [];
+
+    // Always include the current value even if hass isn't loaded yet
+    if (current && !entities.includes(current)) entities.unshift(current);
+
+    if (entities.length === 0) {
+      // Fallback to text input if no calendars found at all
+      return `<input type="text" id="cc_calendar_entity"
+        placeholder="calendar.home" value="${current}">
+        <div class="hint" style="margin-top:6px;">No calendar entities found. Type one manually.</div>`;
+    }
+
+    const options = entities.map(e => {
+      const friendly = this._hass?.states[e]?.attributes?.friendly_name || e;
+      const selected = e === current ? 'selected' : '';
+      return `<option value="${e}" ${selected}>${friendly} <span style="opacity:0.5">(${e})</span></option>`;
+    }).join('');
+
+    return `
+      <div style="position:relative;">
+        <select id="cc_calendar_entity" style="
+          width:100%;
+          background:var(--secondary-background-color,rgba(0,0,0,0.06));
+          color:var(--primary-text-color);
+          border:1px solid rgba(128,128,128,0.2);
+          border-radius:8px;
+          padding:9px 36px 9px 12px;
+          font-size:13px;
+          font-family:inherit;
+          appearance:none;
+          -webkit-appearance:none;
+          cursor:pointer;
+        ">
+          ${options}
+        </select>
+        <div style="
+          position:absolute; right:12px; top:50%; transform:translateY(-50%);
+          pointer-events:none; color:rgba(128,128,128,0.7); font-size:11px;
+        ">▼</div>
+      </div>`;
   }
 
   _colorRow(key, emoji, label, value, allowNone) {
