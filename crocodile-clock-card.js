@@ -1716,10 +1716,19 @@ class CrocodileClockCard extends HTMLElement {
           + (isToday    ? ' today'    : '')
           + (isSelected && !isToday ? ' selected' : '');
         d.textContent = i;
-        d.addEventListener('click', () => {
-          selYear = viewYear; selMonth = viewMonth; selDay = i;
-          buildCalendar();
-          loadEvents(viewYear, viewMonth, i);
+        const dayNum = i; // immutable capture for closure
+        d.addEventListener('click', e => {
+          e.stopPropagation();
+          selYear = viewYear; selMonth = viewMonth; selDay = dayNum;
+          // Update classes in-place to avoid full grid rebuild (which caused
+          // propagation issues where the rebuilt day-1 cell intercepted the event)
+          grid.querySelectorAll('.cc-cal-day').forEach(el => {
+            const n = parseInt(el.textContent, 10);
+            const wasToday = el.classList.contains('today');
+            el.classList.remove('selected');
+            if (!wasToday && n === dayNum) el.classList.add('selected');
+          });
+          loadEvents(viewYear, viewMonth, dayNum);
         });
         grid.appendChild(d);
       }
