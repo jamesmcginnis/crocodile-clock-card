@@ -628,6 +628,7 @@ class CrocodileClockDrawer {
         prevMinute: -1, hourFlash: -99999,
         chevGlow: [],
         prevHourChev: -1, prevMinChev: -1, prevSecChev: -1,
+        lastFiveSec: -1, allFlash: -99999, prevSecond: -1,
       };
     }
     const sg = this._sg;
@@ -662,6 +663,22 @@ class CrocodileClockDrawer {
     if (hChev !== sg.prevHourChev) { triggerChev(hChev); sg.prevHourChev = hChev; }
     if (mChev !== sg.prevMinChev)  { triggerChev(mChev); sg.prevMinChev  = mChev; }
     if (sChev >= 0 && sChev !== sg.prevSecChev) { triggerChev(sChev); sg.prevSecChev = sChev; }
+
+    // Every-5-seconds: light up one chevron briefly (chevron index matches seconds / 5)
+    const fiveBucket = Math.floor(s / 5);
+    if (fiveBucket !== sg.lastFiveSec) {
+      sg.lastFiveSec = fiveBucket;
+      const fiveChev = fiveBucket % 12;
+      triggerChev(fiveChev);
+    }
+
+    // Full-minute (second hand hits 12): flash ALL chevrons simultaneously
+    if (s === 0 && sg.prevSecond !== 0) {
+      sg.allFlash = now;
+      for (let ci = 0; ci < 12; ci++) triggerChev(ci);
+    }
+    sg.prevSecond = s;
+
     sg.chevGlow = sg.chevGlow.filter(g => now - g.born < 1100);
 
     // ── Ripple spawning ────────────────────────────────────────────
@@ -901,8 +918,8 @@ class CrocodileClockDrawer {
     const isMinimal = face === 'minimal';
 
     if (isNeon) {
-      this._handNeon(r, hourAngle, r * 0.50, r * 0.060, hCol);
-      this._handNeon(r, minAngle,  r * 0.70, r * 0.042, mCol);
+      this._handNeon(r, hourAngle, r * 0.50, r * 0.036, hCol);
+      this._handNeon(r, minAngle,  r * 0.70, r * 0.024, mCol);
     } else if (isLuxury) {
       this._handBaton(r, hourAngle, r * 0.48, r * 0.038, hCol);
       this._handBaton(r, minAngle,  r * 0.67, r * 0.026, mCol);
@@ -910,18 +927,18 @@ class CrocodileClockDrawer {
       this._handStick(r, hourAngle, r * 0.49, r * 0.024, r * 0.10, hCol);
       this._handStick(r, minAngle,  r * 0.69, r * 0.016, r * 0.08, mCol);
     } else {
-      this._handTapered(r, hourAngle, r * 0.50, r * 0.052, r * 0.095, hCol);
-      this._handTapered(r, minAngle,  r * 0.70, r * 0.035, r * 0.080, mCol);
+      this._handTapered(r, hourAngle, r * 0.50, r * 0.038, r * 0.080, hCol);
+      this._handTapered(r, minAngle,  r * 0.70, r * 0.026, r * 0.065, mCol);
     }
 
     if (cfg.show_seconds && secondAngle !== undefined) {
       this._handSecond(r, secondAngle, sCol, isNeon);
     }
 
-    ctx.beginPath(); ctx.arc(0, 0, r * 0.054, 0, 2 * Math.PI);
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.040, 0, 2 * Math.PI);
     ctx.fillStyle = (cfg.show_seconds && secondAngle !== undefined) ? sCol : hCol;
     ctx.fill();
-    ctx.beginPath(); ctx.arc(0, 0, r * 0.024, 0, 2 * Math.PI);
+    ctx.beginPath(); ctx.arc(0, 0, r * 0.018, 0, 2 * Math.PI);
     ctx.fillStyle = 'rgba(0,0,0,0.7)'; ctx.fill();
   }
 
@@ -983,10 +1000,10 @@ class CrocodileClockDrawer {
     } else {
       ctx.shadowColor = 'rgba(0,0,0,0.45)'; ctx.shadowBlur = 5; ctx.shadowOffsetY = 2;
     }
-    ctx.strokeStyle = color; ctx.lineWidth = r * 0.017; ctx.lineCap = 'round';
+    ctx.strokeStyle = color; ctx.lineWidth = r * 0.009; ctx.lineCap = 'round';
     ctx.beginPath(); ctx.moveTo(0, r * 0.23); ctx.lineTo(0, -r * 0.79); ctx.stroke();
     ctx.shadowBlur = 0;
-    ctx.beginPath(); ctx.arc(0, r * 0.135, r * 0.038, 0, 2 * Math.PI);
+    ctx.beginPath(); ctx.arc(0, r * 0.135, r * 0.026, 0, 2 * Math.PI);
     ctx.fillStyle = color; ctx.fill();
     ctx.restore();
   }
