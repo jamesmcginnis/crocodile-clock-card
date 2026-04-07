@@ -1061,6 +1061,20 @@ class CrocodileClockCard extends HTMLElement {
 
   setConfig(config) {
     this._config = { ...CrocodileClockCard.getStubConfig(), ...config };
+
+    // Restore face persisted by the long-press selector, but only when the
+    // dashboard YAML does not already specify a face (i.e. the user has never
+    // saved one through the visual editor).  This way the YAML value always
+    // wins when it exists, while the long-press choice survives app restarts.
+    if (!config.face) {
+      const storageKey = 'crocodile-clock-face:' + (config.entity || config.title || 'default');
+      try {
+        const saved = localStorage.getItem(storageKey);
+        if (saved) this._config.face = saved;
+      } catch (_) { /* localStorage unavailable – ignore */ }
+    }
+    this._storageKey = 'crocodile-clock-face:' + (config.entity || config.title || 'default');
+
     this._buildCard();
   }
 
@@ -1365,7 +1379,12 @@ class CrocodileClockCard extends HTMLElement {
           // Reset Stargate state for clean reinit when switching to/from it
           this._drawer._sg = null;
         }
-        // Persist the new face to the dashboard YAML via HA's config-changed event
+        // Persist the chosen face to localStorage so it survives app restarts.
+        // (The config-changed event is also dispatched for any editor listeners,
+        // but HA ignores it when fired from the card element itself.)
+        try {
+          if (this._storageKey) localStorage.setItem(this._storageKey, f.value);
+        } catch (_) { /* localStorage unavailable – ignore */ }
         this.dispatchEvent(new CustomEvent('config-changed', {
           detail: { config: this._config },
           bubbles: true,
