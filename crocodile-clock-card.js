@@ -629,6 +629,15 @@ class CrocodileClockDrawer {
         chevGlow: [],
         prevHourChev: -1, prevMinChev: -1, prevSecChev: -1,
         lastFiveSec: -1, allFlash: -99999, prevSecond: -1,
+        // Dialling-sequence state
+        // dialPhase: 'idle' | 'dialling' | 'locked'
+        dialPhase: 'idle',
+        dialStart: -99999,   // timestamp when dialling began
+        dialLitCount: 0,     // how many chevrons are currently locked on
+        dialLastLit: -99999, // timestamp of the last sequential lock-on
+        lockedChevrons: new Set(), // which chevron indices are permanently lit
+        dialResetPending: false,   // true once s===0 flash fires; reset after flash settles
+        dialResetAt: -99999,
       };
     }
     const sg = this._sg;
@@ -685,6 +694,50 @@ class CrocodileClockDrawer {
     sg.prevSecond = s;
 
     sg.chevGlow = sg.chevGlow.filter(g => now - g.born < 1100);
+
+    // ── Dialling-sequence: start at 5 s, light chevrons 1-by-1, stay lit ──
+    // Phase transitions:
+    //   idle      → dialling  : when s >= 5 for the first time each minute
+    //   dialling  → locked    : when all 12 chevrons are lit
+    //   locked    → idle      : when s===0 (top of minute) flash settles (~1.4 s after)
+
+    // Kick off dialling at s=5 each minute
+    if (s >= 5 && sg.dialPhase === 'idle') {
+      sg.dialPhase    = 'dialling';
+      sg.dialStart    = now;
+      sg.dialLitCount = 0;
+      sg.dialLastLit  = now - 999; // trigger first lock-on immediately
+      sg.lockedChevrons.clear();
+    }
+
+    // Sequentially light next chevron every ~0.85 s during dialling
+    if (sg.dialPhase === 'dialling') {
+      const CHEV_INTERVAL = 850; // ms between each chevron lock-on
+      if (sg.dialLitCount < 12 && (now - sg.dialLastLit) >= CHEV_INTERVAL) {
+        const nextIdx = sg.dialLitCount; // light chevrons in order 0→11
+        sg.lockedChevrons.add(nextIdx);
+        sg.dialLitCount++;
+        sg.dialLastLit = now;
+        // Also fire the brief flash glow for this chevron
+        sg.chevGlow.push({ idx: nextIdx, born: now });
+      }
+      if (sg.dialLitCount >= 12) {
+        sg.dialPhase = 'locked';
+      }
+    }
+
+    // On s===0 (top of minute): all-chevron flash fires, then reset dial state
+    // We schedule the reset ~1400 ms after the flash so it doesn't cut off the glow.
+    if (s === 0 && !sg.dialResetPending && sg.dialPhase !== 'idle') {
+      sg.dialResetPending = true;
+      sg.dialResetAt = now + 1400;
+    }
+    if (sg.dialResetPending && now >= sg.dialResetAt) {
+      sg.dialResetPending = false;
+      sg.dialPhase = 'idle';
+      sg.dialLitCount = 0;
+      sg.lockedChevrons.clear();
+    }
 
     // ── Ripple spawning ────────────────────────────────────────────
     sg.rippleTimer++;
@@ -849,7 +902,11 @@ class CrocodileClockDrawer {
       const gAge  = ge ? (now - ge.born) / 1000 : 1;
       const handLit  = !!ge && gAge < 1.0;
       const handFade = handLit ? Math.pow(1 - gAge, 1.5) : 0;
-      const isRed    = isLocked || lockFlash || handLit;
+      // Dial-sequence: permanently lit chevron (stays on until s===0 reset)
+      const dialLocked = sg.lockedChevrons.has(i);
+      // Brief white flash when this chevron first locks on during dial sequence
+      const dialFlash  = dialLocked && handLit && gAge < 0.38;
+      const isRed    = isLocked || lockFlash || handLit || dialLocked;
 
       ctx.save(); ctx.translate(cx2, cy2); ctx.rotate(a + Math.PI / 2);
       // Slightly smaller chevrons to fit 12 around the ring
@@ -871,16 +928,19 @@ class CrocodileClockDrawer {
 
       if (isRed) {
         const rg=ctx.createLinearGradient(0,-vH*.52,0,vH*.28);
-        if (lockFlash) {
+        const anyFlash = lockFlash || dialFlash;
+        if (anyFlash) {
+          // Bright white burst on first lock-on
           rg.addColorStop(0,'#FFFFFF'); rg.addColorStop(.28,'#FFBBAA'); rg.addColorStop(1,'#FF2200');
         } else {
-          const b = isLocked ? 1.0 : handFade;
+          // Steady glow for permanently locked chevrons; fade for transient hand-lit ones
+          const b = (isLocked || dialLocked) ? 1.0 : handFade;
           rg.addColorStop(0,`rgb(255,${Math.round(58+b*30)},${Math.round(b*16)})`);
           rg.addColorStop(.5,'#EE1800'); rg.addColorStop(1,'#BB0D00');
         }
         ctx.fillStyle=rg;
-        ctx.shadowColor=lockFlash?'rgba(255,225,200,1)':'rgba(255,18,0,0.96)';
-        ctx.shadowBlur=lockFlash?30:(isLocked?22:handFade*24);
+        ctx.shadowColor=(lockFlash||dialFlash)?'rgba(255,225,200,1)':'rgba(255,18,0,0.96)';
+        ctx.shadowBlur=(lockFlash||dialFlash)?30:((isLocked||dialLocked)?22:handFade*24);
       } else {
         const ug=ctx.createLinearGradient(0,-vH*.52,0,vH*.28);
         ug.addColorStop(0,'#4a4032'); ug.addColorStop(.5,'#302818'); ug.addColorStop(1,'#1c1508');
@@ -891,7 +951,8 @@ class CrocodileClockDrawer {
       ctx.beginPath();
       ctx.moveTo(-vW2*.25,-vH*.44); ctx.lineTo(vW2*.14,-vH*.10);
       ctx.lineTo(vW2*.05,-vH*.10); ctx.lineTo(-vW2*.30,-vH*.44); ctx.closePath();
-      ctx.fillStyle=isRed?`rgba(255,210,190,${lockFlash?0.55:handFade*0.48})`:'rgba(255,255,210,0.11)';
+      const chipAlpha = (lockFlash||dialFlash) ? 0.55 : (dialLocked||isLocked) ? 0.40 : handFade*0.48;
+      ctx.fillStyle=isRed?`rgba(255,210,190,${chipAlpha})`:'rgba(255,255,210,0.11)';
       ctx.shadowBlur=0; ctx.fill();
       ctx.restore();
     }
