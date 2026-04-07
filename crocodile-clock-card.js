@@ -1335,7 +1335,7 @@ class CrocodileClockCard extends HTMLElement {
 
     // Friendly subtitle
     const subEl = document.createElement('div');
-    subEl.textContent = 'Tap any style below to switch instantly. Your choice will apply straight away — if you love it, Your choice is saved automatically to the dashboard.';
+    subEl.textContent = 'Tap any style below to switch instantly. Your choice is saved automatically to the dashboard.';
     Object.assign(subEl.style, {
       fontSize: '13px', color: 'rgba(255,255,255,0.42)', lineHeight: '1.55',
       marginBottom: '16px', fontWeight: '400',
