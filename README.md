@@ -1,10 +1,10 @@
 # Crocodile Clock Card
 
-A custom Home Assistant Lovelace card featuring a fully customisable analog clock with twelve distinct clock faces, a smooth sweep or mechanical tick second hand, live Home Assistant calendar events, and a glassmorphic popup with a large digital clock, interactive calendar, and optional link. Long-press the clock to switch faces instantly — the choice saves automatically.
+A custom Home Assistant Lovelace card featuring a fully customisable analog clock with twelve distinct clock faces, a smooth sweep or mechanical tick second hand, live Home Assistant calendar events, and a glassmorphic popup with a large digital clock, interactive calendar, and optional link.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
-[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=jamesmcginnis&repository=crocodile-clock-card&category=plugin)
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=jamesmcginnis&crocodile-clock-card&category=plugin)
 
 ---
 
@@ -12,7 +12,6 @@ A custom Home Assistant Lovelace card featuring a fully customisable analog cloc
 
 - **Twelve clock faces** — Classic, Minimal, Roman, Modern, Luxury, Skeleton, Neon, Retro, Sport, Art Deco, Celestial, Stargate
 - **Animated Stargate face** — rotating glyph ring, chevrons that light up as hands pass, every-5-second chevron pulses, full-minute all-chevron flash, and a live water-ripple portal
-- **Long-press face selector** — switch faces instantly from the card; the choice is saved permanently to your dashboard YAML
 - **Smooth or Tick second hand** — true continuous sweep or damped-spring mechanical tick with realistic overshoot and recoil
 - **Seven colour pickers** — full control over the card background, dial, text and marks, hour hand, minute hand, second hand, and accent colour
 - **Transparent background** support with adjustable opacity (10–100%)
@@ -21,7 +20,7 @@ A custom Home Assistant Lovelace card featuring a fully customisable analog cloc
 - **Home Assistant calendar integration** — fetches events directly from a configured calendar entity and displays them below the calendar grid
 - **Optional popup link** — configure a URL that appears as a button at the bottom of the popup
 - **Optional date display** below the clock on the card face
-- **Full visual editor** — no YAML required
+- **Full visual editor** — no YAML required, including clock face selection
 
 ---
 
@@ -147,12 +146,6 @@ The second hand moves continuously with no visible steps between positions. One 
 
 ### Tick
 A damped-spring animation. On each new second the hand jumps slightly past the target position and then springs back, producing a natural overshoot and recoil. The effect closely resembles the feel of a well-tuned mechanical movement.
-
----
-
-## Long-Press Face Selector
-
-Long-pressing the clock (hold for approximately 0.6 seconds) opens an overlay grid showing all twelve clock faces. Tap any face to switch instantly — the card updates live and the selection is written back to your dashboard configuration automatically, so the chosen face persists across page reloads without any manual YAML editing.
 
 ---
 
