@@ -1335,7 +1335,7 @@ class CrocodileClockCard extends HTMLElement {
 
     // Friendly subtitle
     const subEl = document.createElement('div');
-    subEl.textContent = 'Tap any style below to switch instantly. Your choice will apply straight away — if you love it, save it in the card editor to make it permanent.';
+    subEl.textContent = 'Tap any style below to switch instantly. Your choice will apply straight away — if you love it, Your choice is saved automatically to the dashboard.';
     Object.assign(subEl.style, {
       fontSize: '13px', color: 'rgba(255,255,255,0.42)', lineHeight: '1.55',
       marginBottom: '16px', fontWeight: '400',
@@ -1365,6 +1365,12 @@ class CrocodileClockCard extends HTMLElement {
           // Reset Stargate state for clean reinit when switching to/from it
           this._drawer._sg = null;
         }
+        // Persist the new face to the dashboard YAML via HA's config-changed event
+        this.dispatchEvent(new CustomEvent('config-changed', {
+          detail: { config: this._config },
+          bubbles: true,
+          composed: true,
+        }));
         overlay.remove();
       });
       grid.appendChild(opt);
@@ -1649,16 +1655,6 @@ class CrocodileClockCard extends HTMLElement {
       nextBtn.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="currentColor"/></svg>`;
       nextBtn.onclick   = () => { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } buildCalendar(); };
 
-      const todayBtn = document.createElement('button');
-      todayBtn.className  = 'cc-today-btn';
-      todayBtn.textContent = 'Today';
-      todayBtn.onclick     = () => {
-        viewYear = todayYear; viewMonth = todayMonth;
-        selYear = todayYear; selMonth = todayMonth; selDay = todayDay;
-        buildCalendar();
-        loadEvents(todayYear, todayMonth, todayDay);
-      };
-
       const lbl = document.createElement('div');
       Object.assign(lbl.style, {
         fontSize: '17px', fontWeight: '700', letterSpacing: '-0.3px',
@@ -1668,7 +1664,6 @@ class CrocodileClockCard extends HTMLElement {
 
       hdr.appendChild(prevBtn);
       hdr.appendChild(lbl);
-      hdr.appendChild(todayBtn);
       hdr.appendChild(nextBtn);
       calWrap.appendChild(hdr);
 
