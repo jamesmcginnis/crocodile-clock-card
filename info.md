@@ -1,12 +1,12 @@
 # Crocodile Clock Card
 
-A customisable analog clock card for Home Assistant Lovelace dashboards. Choose from twelve clock faces, configure a smooth sweep or snappy mechanical tick second hand, and tap the clock to reveal a glassmorphic popup with a large digital clock, interactive calendar with Home Assistant calendar events, and an optional link. Long-press the clock to switch faces instantly — the choice is saved automatically to your dashboard.
+A customisable analog clock card for Home Assistant Lovelace dashboards. Choose from twelve clock faces, configure a smooth sweep or snappy mechanical tick second hand, and tap the clock to reveal a glassmorphic popup with a large digital clock, interactive calendar with Home Assistant calendar events, and an optional link.
 
 ## Clock faces
 
 Twelve distinct faces are available: **Classic** (Arabic numerals with tapered hands), **Minimal** (dot indices with clean stick hands), **Roman** (Roman numeral dial), **Modern** (bold quarter numerals with accent tick marks), **Luxury** (gold baton indices and baton hands), **Skeleton** (diamond markers with structural rings), **Neon** (glowing accent-coloured elements), **Retro** (vintage-styled Roman numerals), **Sport** (bold geometric markers), **Art Deco** (pointed gold indices with serif numerals), **Celestial** (star markers with a deep-space aesthetic), and **Stargate** (an animated portal with a rotating glyph ring, twelve chevrons, and a living water-ripple puddle).
 
-Long-press the clock face to open the face selector and switch instantly. The selected face is saved permanently to your dashboard YAML with no manual editing required.
+Clock faces are selected from the visual editor.
 
 ## Stargate face
 
@@ -38,14 +38,10 @@ Tapping the clock opens a glassmorphic overlay with a large digital time display
 
 Set `calendar_entity` to a Home Assistant calendar entity (e.g. `calendar.home`) and the popup will display events for whichever day you tap in the calendar. Click any date to see its events. The card fetches events directly from the Home Assistant calendar API.
 
-## Long-press face selector
-
-Long-pressing the clock (600 ms) opens an overlay showing all twelve faces as a grid. Tap any face to switch immediately — the card updates live and the new face is written back to your dashboard configuration automatically.
-
 ## Display options
 
 An optional **date display** can be shown below the clock face on the card itself.
 
 ## Visual editor
 
-All settings are configurable through the built-in visual editor — no YAML required.
+All settings are configurable through the built-in visual editor — no YAML required. This includes selecting the clock face.
