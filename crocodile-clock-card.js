@@ -1707,7 +1707,7 @@ class CrocodileClockCard extends HTMLElement {
         grid.appendChild(d);
       }
 
-      // Current month days — clickable
+      // Current month days — data-day attribute used by delegated listener
       for (let i = 1; i <= daysInMonth; i++) {
         const isToday    = i === todayDay   && viewMonth === todayMonth  && viewYear === todayYear;
         const isSelected = i === selDay     && viewMonth === selMonth    && viewYear === selYear;
@@ -1716,20 +1716,7 @@ class CrocodileClockCard extends HTMLElement {
           + (isToday    ? ' today'    : '')
           + (isSelected && !isToday ? ' selected' : '');
         d.textContent = i;
-        const dayNum = i; // immutable capture for closure
-        d.addEventListener('click', e => {
-          e.stopPropagation();
-          selYear = viewYear; selMonth = viewMonth; selDay = dayNum;
-          // Update classes in-place to avoid full grid rebuild (which caused
-          // propagation issues where the rebuilt day-1 cell intercepted the event)
-          grid.querySelectorAll('.cc-cal-day').forEach(el => {
-            const n = parseInt(el.textContent, 10);
-            const wasToday = el.classList.contains('today');
-            el.classList.remove('selected');
-            if (!wasToday && n === dayNum) el.classList.add('selected');
-          });
-          loadEvents(viewYear, viewMonth, dayNum);
-        });
+        d.dataset.day = String(i);
         grid.appendChild(d);
       }
 
@@ -1742,6 +1729,22 @@ class CrocodileClockCard extends HTMLElement {
         d.textContent = i;
         grid.appendChild(d);
       }
+
+      // Single delegated listener on the grid — reads data-day so there are
+      // no per-cell closures and no risk of stale captures or re-fires on rebuild.
+      grid.addEventListener('click', e => {
+        e.stopPropagation();
+        const cell = e.target.closest('[data-day]');
+        if (!cell) return;
+        const dayNum = parseInt(cell.dataset.day, 10);
+        selYear = viewYear; selMonth = viewMonth; selDay = dayNum;
+        grid.querySelectorAll('[data-day]').forEach(el => {
+          el.classList.remove('selected');
+          if (!el.classList.contains('today') && parseInt(el.dataset.day, 10) === dayNum)
+            el.classList.add('selected');
+        });
+        loadEvents(selYear, selMonth, dayNum);
+      });
 
       calWrap.appendChild(grid);
     };
