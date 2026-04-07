@@ -3,7 +3,7 @@
  * Home Assistant custom Lovelace card — Beautiful analog clock with twelve
  * distinct clock faces, smooth sweep or mechanical tick second hand,
  * glassmorphic popup with digital clock + interactive calendar with HA events,
- * and a long-press clock-face selector.
+ * and a visual editor for selecting clock faces and customising all settings.
  *
  * Repository: https://github.com/jamesmcginnis/crocodile-clock-card
  * Author:     James McGinnis
@@ -1029,8 +1029,6 @@ class CrocodileClockCard extends HTMLElement {
     this._springStart  = 0;
     this._currAngle    = 0;
     this._ro           = null;
-    this._pressTimer   = null;
-    this._longPressed  = false;
   }
 
   static getConfigElement() {
@@ -1061,22 +1059,10 @@ class CrocodileClockCard extends HTMLElement {
 
   setConfig(config) {
     this._config = { ...CrocodileClockCard.getStubConfig(), ...config };
-
-    // Restore face persisted by the long-press selector, but only when the
-    // dashboard YAML does not already specify a face (i.e. the user has never
-    // saved one through the visual editor).  This way the YAML value always
-    // wins when it exists, while the long-press choice survives app restarts.
-    if (!config.face) {
-      const storageKey = 'crocodile-clock-face:' + (config.entity || config.title || 'default');
-      try {
-        const saved = localStorage.getItem(storageKey);
-        if (saved) this._config.face = saved;
-      } catch (_) { /* localStorage unavailable – ignore */ }
-    }
-    this._storageKey = 'crocodile-clock-face:' + (config.entity || config.title || 'default');
-
     this._buildCard();
   }
+
+
 
   set hass(h) {
     this._hass = h;
@@ -1088,9 +1074,8 @@ class CrocodileClockCard extends HTMLElement {
   }
 
   disconnectedCallback() {
-    if (this._raf)       { cancelAnimationFrame(this._raf); this._raf = null; }
-    if (this._ro)        { this._ro.disconnect(); this._ro = null; }
-    if (this._pressTimer){ clearTimeout(this._pressTimer); this._pressTimer = null; }
+    if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+    if (this._ro)  { this._ro.disconnect(); this._ro = null; }
   }
 
   _resolveBg() {
@@ -1160,41 +1145,8 @@ class CrocodileClockCard extends HTMLElement {
     this._ro.observe(card);
     this._drawer.resize(220);
 
-    // ── Long-press → face selector / tap → popup ─────────────────
-    let pressStartX = 0, pressStartY = 0;
-
-    card.addEventListener('pointerdown', e => {
-      this._longPressed = false;
-      pressStartX = e.clientX;
-      pressStartY = e.clientY;
-      this._pressTimer = setTimeout(() => {
-        this._pressTimer  = null;
-        this._longPressed = true;
-        this._openFaceSelector();
-      }, 600);
-    });
-
-    card.addEventListener('pointermove', e => {
-      if (this._pressTimer) {
-        const dx = e.clientX - pressStartX;
-        const dy = e.clientY - pressStartY;
-        if (Math.sqrt(dx * dx + dy * dy) > 10) {
-          clearTimeout(this._pressTimer);
-          this._pressTimer = null;
-        }
-      }
-    });
-
-    ['pointerup', 'pointercancel'].forEach(evt => {
-      card.addEventListener(evt, () => {
-        if (this._pressTimer) { clearTimeout(this._pressTimer); this._pressTimer = null; }
-      });
-    });
-
-    card.addEventListener('click', () => {
-      if (this._longPressed) { this._longPressed = false; return; }
-      this._openPopup();
-    });
+    // ── Tap → popup ──────────────────────────────────────────────
+    card.addEventListener('click', () => { this._openPopup(); });
   }
 
   // ── Animation loop ─────────────────────────────────────────────
@@ -1263,147 +1215,6 @@ class CrocodileClockCard extends HTMLElement {
     };
 
     this._raf = requestAnimationFrame(tick);
-  }
-
-  // ── Long-press face selector popup ─────────────────────────────
-  _openFaceSelector() {
-    document.getElementById('cc-face-overlay')?.remove();
-
-    const cfg    = this._config;
-    const accent = cfg.accent_color || '#007AFF';
-
-    const overlay = document.createElement('div');
-    overlay.id    = 'cc-face-overlay';
-    Object.assign(overlay.style, {
-      position: 'fixed', inset: '0', zIndex: '99999',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '20px',
-      background: 'rgba(0,0,0,0.65)',
-      backdropFilter: 'blur(18px)',
-      WebkitBackdropFilter: 'blur(18px)',
-      animation: 'ccFadeIn 0.22s ease',
-    });
-
-    const styleEl = document.createElement('style');
-    styleEl.textContent = CC_KEYFRAMES + `
-      .cc-fs-popup { animation: ccSlideUp 0.30s cubic-bezier(0.34,1.3,0.64,1) both; }
-      .cc-fs-option { cursor: pointer; }
-      .cc-fs-option input { display: none; }
-      .cc-fs-preview {
-        display: flex; flex-direction: column; align-items: center; gap: 5px;
-        padding: 11px 6px; border-radius: 12px; border: 2px solid transparent;
-        transition: all 0.18s; background: rgba(255,255,255,0.06);
-      }
-      .cc-fs-option.active .cc-fs-preview {
-        border-color: ${accent}; background: ${accent}22;
-      }
-      .cc-fs-preview:hover { background: rgba(255,255,255,0.11); }
-      .cc-fs-symbol {
-        font-size: 19px; font-weight: 700; height: 26px;
-        display: flex; align-items: center;
-        font-family: -apple-system, BlinkMacSystemFont, serif;
-      }
-      .cc-fs-label { font-size: 10px; font-weight: 600; color: rgba(255,255,255,0.72); text-align: center; }
-    `;
-    overlay.appendChild(styleEl);
-
-    const panel = document.createElement('div');
-    panel.className = 'cc-fs-popup';
-    Object.assign(panel.style, {
-      background: 'rgba(22,22,24,0.97)',
-      backdropFilter: 'blur(52px) saturate(200%)',
-      WebkitBackdropFilter: 'blur(52px) saturate(200%)',
-      border: '1px solid rgba(255,255,255,0.11)',
-      borderRadius: '28px',
-      padding: '24px 18px 20px',
-      width: '100%', maxWidth: '380px',
-      fontFamily: "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif",
-      color: '#fff', position: 'relative',
-    });
-    panel.addEventListener('click', e => e.stopPropagation());
-
-    // Header
-    const hdr = document.createElement('div');
-    Object.assign(hdr.style, {
-      display: 'flex', alignItems: 'center',
-      justifyContent: 'space-between', marginBottom: '16px',
-    });
-
-    const closeBtn = document.createElement('button');
-    Object.assign(closeBtn.style, {
-      background: 'rgba(255,255,255,0.09)', border: 'none', borderRadius: '50%',
-      width: '30px', height: '30px', cursor: 'pointer',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      color: 'rgba(255,255,255,0.60)', fontSize: '16px', fontFamily: 'inherit',
-      flexShrink: '0',
-    });
-    closeBtn.textContent = '✕';
-
-    const titleEl = document.createElement('div');
-    titleEl.textContent = 'Choose Your Clock Face';
-    Object.assign(titleEl.style, { fontSize: '20px', fontWeight: '700', letterSpacing: '-0.4px', flex: '1' });
-
-    hdr.appendChild(titleEl);
-    hdr.appendChild(closeBtn);
-    panel.appendChild(hdr);
-
-    // Friendly subtitle
-    const subEl = document.createElement('div');
-    subEl.textContent = 'Tap any style below to switch instantly. Your choice is saved automatically to the dashboard.';
-    Object.assign(subEl.style, {
-      fontSize: '13px', color: 'rgba(255,255,255,0.42)', lineHeight: '1.55',
-      marginBottom: '16px', fontWeight: '400',
-    });
-    panel.appendChild(subEl);
-
-    // 4×3 grid of face options
-    const grid = document.createElement('div');
-    Object.assign(grid.style, {
-      display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '7px',
-    });
-
-    CC_FACES.forEach(f => {
-      const opt = document.createElement('label');
-      opt.className = 'cc-fs-option' + (cfg.face === f.value ? ' active' : '');
-      opt.innerHTML = `
-        <input type="radio" name="cc_fs_face" value="${f.value}" ${cfg.face === f.value ? 'checked' : ''}>
-        <div class="cc-fs-preview">
-          <span class="cc-fs-symbol">${f.symbol}</span>
-          <span class="cc-fs-label">${f.label}</span>
-        </div>
-      `;
-      opt.addEventListener('click', () => {
-        this._config = { ...this._config, face: f.value };
-        if (this._drawer) {
-          this._drawer.setConfig(this._config);
-          // Reset Stargate state for clean reinit when switching to/from it
-          this._drawer._sg = null;
-        }
-        // Persist the chosen face to localStorage so it survives app restarts.
-        // (The config-changed event is also dispatched for any editor listeners,
-        // but HA ignores it when fired from the card element itself.)
-        try {
-          if (this._storageKey) localStorage.setItem(this._storageKey, f.value);
-        } catch (_) { /* localStorage unavailable – ignore */ }
-        this.dispatchEvent(new CustomEvent('config-changed', {
-          detail: { config: this._config },
-          bubbles: true,
-          composed: true,
-        }));
-        overlay.remove();
-      });
-      grid.appendChild(opt);
-    });
-
-    panel.appendChild(grid);
-    overlay.appendChild(panel);
-    document.body.appendChild(overlay);
-
-    const close = () => overlay.remove();
-    closeBtn.onclick = close;
-    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
-    const onKey = e => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
-    document.addEventListener('keydown', onKey);
   }
 
   // ── Digital clock + calendar popup ─────────────────────────────
@@ -1876,7 +1687,6 @@ class CrocodileClockCardEditor extends HTMLElement {
         <!-- ── Clock Face ── -->
         <div>
           <div class="section-title">Clock Face</div>
-          <div class="hint" style="margin-bottom:6px">💡 Tip: Hold your finger on the clock card to preview and switch faces without opening the editor.</div>
           <div class="card-block">
             <div class="face-grid">${faceGrid}</div>
           </div>
@@ -2208,6 +2018,6 @@ if (!window.customCards.some(c => c.type === 'crocodile-clock-card')) {
     type:        'crocodile-clock-card',
     name:        'Crocodile Clock Card',
     preview:     false,
-    description: 'Beautiful analog clock with twelve faces including an animated Stargate portal, smooth or mechanical tick seconds, long-press face switcher, and a glassmorphic popup with digital clock, interactive calendar and Home Assistant calendar events.',
+    description: 'Beautiful analog clock with twelve faces including an animated Stargate portal, smooth or mechanical tick seconds, and a glassmorphic popup with digital clock, interactive calendar and Home Assistant calendar events.',
   });
 }
