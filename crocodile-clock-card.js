@@ -662,12 +662,17 @@ class CrocodileClockDrawer {
 
     if (hChev !== sg.prevHourChev) { triggerChev(hChev); sg.prevHourChev = hChev; }
     if (mChev !== sg.prevMinChev)  { triggerChev(mChev); sg.prevMinChev  = mChev; }
-    if (sChev >= 0 && sChev !== sg.prevSecChev) { triggerChev(sChev); sg.prevSecChev = sChev; }
+    // (second hand chevron collision removed — 5-second bucket handles this below)
 
-    // Every-5-seconds: light up one chevron briefly (chevron index matches seconds / 5)
+    // Every-5-seconds: light the chevron the second hand is now pointing at.
+    // fiveBucket changes at s=0,5,10,…; the hand has just crossed into chevron
+    // (fiveBucket % 12), but because bucket 0 covers s=0-4 (12→1 o'clock gap)
+    // and the chevrons sit *at* the hour markers, we use the bucket directly —
+    // chevron 0 = 12 o'clock = s=0, chevron 1 = 1 o'clock = s=5, etc.
     const fiveBucket = Math.floor(s / 5);
     if (fiveBucket !== sg.lastFiveSec) {
       sg.lastFiveSec = fiveBucket;
+      // s=0 → chev 0 (12), s=5 → chev 1 (1), … s=55 → chev 11 (11)
       const fiveChev = fiveBucket % 12;
       triggerChev(fiveChev);
     }
