@@ -1632,7 +1632,7 @@ class CrocodileClockCard extends HTMLElement {
     const buildCalendar = () => {
       calWrap.innerHTML = '';
 
-      // Header row
+      // ── Header ────────────────────────────────────────────────
       const hdr = document.createElement('div');
       Object.assign(hdr.style, {
         display: 'flex', alignItems: 'center',
@@ -1672,86 +1672,92 @@ class CrocodileClockCard extends HTMLElement {
       hdr.appendChild(nextBtn);
       calWrap.appendChild(hdr);
 
-      // Day-name header
-      const dnRow = document.createElement('div');
-      Object.assign(dnRow.style, {
-        display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', marginBottom: '4px',
+      // ── Calendar table — uses <table> so cells are unambiguously aligned ──
+      // Monday-first. getDay(): 0=Sun,1=Mon,...,6=Sat
+      // startCol: 0=Mon … 6=Sun
+      const firstDow     = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun
+      const startCol     = (firstDow + 6) % 7;                        // 0=Mon
+      const daysInMonth  = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+      const table = document.createElement('table');
+      Object.assign(table.style, {
+        width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed',
       });
-      DAY_LABELS.forEach(d => {
-        const el = document.createElement('div');
-        Object.assign(el.style, {
+
+      // Day-name header row
+      const thead = document.createElement('thead');
+      const hrow  = document.createElement('tr');
+      DAY_LABELS.forEach(label => {
+        const th = document.createElement('th');
+        Object.assign(th.style, {
           textAlign: 'center', fontSize: '11px', fontWeight: '600',
-          color: 'rgba(255,255,255,0.30)', padding: '4px 0', letterSpacing: '0.04em',
+          color: 'rgba(255,255,255,0.30)', padding: '4px 0',
+          letterSpacing: '0.04em', fontFamily: 'inherit',
         });
-        el.textContent = d;
-        dnRow.appendChild(el);
+        th.textContent = label;
+        hrow.appendChild(th);
       });
-      calWrap.appendChild(dnRow);
+      thead.appendChild(hrow);
+      table.appendChild(thead);
 
-      // Day grid (Monday-first)
-      const grid = document.createElement('div');
-      Object.assign(grid.style, {
-        display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: '2px',
-      });
+      // Body — build rows of 7
+      const tbody = document.createElement('tbody');
+      let   col   = startCol;  // which column (0-6) the 1st falls in
+      let   tr    = document.createElement('tr');
 
-      // Get day-of-week for the 1st using Intl (timezone-safe, no midnight rollover risk).
-      // weekday:'short' with locale en-US gives Sun/Mon/Tue… then we map to 0-6 Mon-first.
-      const DOW_MAP = { Sun:6, Mon:0, Tue:1, Wed:2, Thu:3, Fri:4, Sat:5 };
-      const firstOfMonth  = new Date(viewYear, viewMonth, 1, 12, 0, 0); // noon avoids DST edge
-      const dowStr        = new Intl.DateTimeFormat('en-US', { weekday:'short', timeZone: tz })
-                              .format(firstOfMonth);
-      const startOffset   = DOW_MAP[dowStr] ?? (firstOfMonth.getDay() + 6) % 7;
-      const daysInMonth   = new Date(viewYear, viewMonth + 1, 0).getDate();
-      const prevMonthDays = new Date(viewYear, viewMonth, 0).getDate();
-
-      // Prev-month trailing days
-      for (let i = startOffset - 1; i >= 0; i--) {
-        const d = document.createElement('div');
-        d.className = 'cc-cal-day other-month';
-        d.textContent = prevMonthDays - i;
-        grid.appendChild(d);
+      // Empty cells before day 1
+      for (let c = 0; c < startCol; c++) {
+        const td = document.createElement('td');
+        td.style.padding = '2px';
+        tr.appendChild(td);
       }
 
-      // Current month days — data-day attribute used by delegated listener
-      for (let i = 1; i <= daysInMonth; i++) {
-        const isToday    = i === todayDay   && viewMonth === todayMonth  && viewYear === todayYear;
-        const isSelected = i === selDay     && viewMonth === selMonth    && viewYear === selYear;
-        const d = document.createElement('div');
-        d.className = 'cc-cal-day'
-          + (isToday    ? ' today'    : '')
-          + (isSelected && !isToday ? ' selected' : '');
-        d.textContent = i;
-        d.dataset.day = String(i);
-        grid.appendChild(d);
+      for (let day = 1; day <= daysInMonth; day++) {
+        const isToday    = day === todayDay && viewMonth === todayMonth && viewYear === todayYear;
+        const isSelected = day === selDay   && viewMonth === selMonth  && viewYear === selYear;
+
+        const td   = document.createElement('td');
+        td.style.padding = '2px';
+
+        const cell = document.createElement('div');
+        cell.className = 'cc-cal-day'
+          + (isToday                 ? ' today'    : '')
+          + (isSelected && !isToday  ? ' selected' : '');
+        cell.textContent  = day;
+        cell.dataset.day  = day;
+        // Click handler directly on the cell — clearest possible
+        cell.onclick = e => {
+          e.stopPropagation();
+          const d = parseInt(cell.dataset.day, 10);
+          selYear = viewYear; selMonth = viewMonth; selDay = d;
+          // Update highlight
+          tbody.querySelectorAll('[data-day]').forEach(el => {
+            el.classList.remove('selected');
+            if (!el.classList.contains('today') && parseInt(el.dataset.day, 10) === d)
+              el.classList.add('selected');
+          });
+          loadEvents(selYear, selMonth, d);
+        };
+
+        td.appendChild(cell);
+        tr.appendChild(td);
+        col++;
+
+        if (col === 7) {
+          tbody.appendChild(tr);
+          tr  = document.createElement('tr');
+          col = 0;
+        }
       }
 
-      // Next-month leading days
-      const total     = startOffset + daysInMonth;
-      const remaining = (7 - (total % 7)) % 7;
-      for (let i = 1; i <= remaining; i++) {
-        const d = document.createElement('div');
-        d.className = 'cc-cal-day other-month';
-        d.textContent = i;
-        grid.appendChild(d);
+      // Pad the final row if needed
+      if (col > 0) {
+        while (col < 7) { const td = document.createElement('td'); td.style.padding = '2px'; tr.appendChild(td); col++; }
+        tbody.appendChild(tr);
       }
 
-      // Single delegated listener on the grid — reads data-day so there are
-      // no per-cell closures and no risk of stale captures or re-fires on rebuild.
-      grid.addEventListener('click', e => {
-        e.stopPropagation();
-        const cell = e.target.closest('[data-day]');
-        if (!cell) return;
-        const dayNum = parseInt(cell.dataset.day, 10);
-        selYear = viewYear; selMonth = viewMonth; selDay = dayNum;
-        grid.querySelectorAll('[data-day]').forEach(el => {
-          el.classList.remove('selected');
-          if (!el.classList.contains('today') && parseInt(el.dataset.day, 10) === dayNum)
-            el.classList.add('selected');
-        });
-        loadEvents(selYear, selMonth, dayNum);
-      });
-
-      calWrap.appendChild(grid);
+      table.appendChild(tbody);
+      calWrap.appendChild(table);
     };
 
     buildCalendar();
