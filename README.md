@@ -1,6 +1,6 @@
 # Crocodile Clock Card
 
-A custom Home Assistant Lovelace card featuring a fully customisable analog clock with seven distinct clock faces, a smooth sweep or mechanical tick second hand, and a glassmorphic popup with a large digital clock, interactive calendar, and optional link.
+A custom Home Assistant Lovelace card featuring a fully customisable analog clock with twelve distinct clock faces, a smooth sweep or mechanical tick second hand, live Home Assistant calendar events, and a glassmorphic popup with a large digital clock, interactive calendar, and optional link. Long-press the clock to switch faces instantly — the choice saves automatically.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
@@ -10,12 +10,15 @@ A custom Home Assistant Lovelace card featuring a fully customisable analog cloc
 
 ## Features
 
-- **Seven clock faces** — Classic, Minimal, Roman, Modern, Luxury, Skeleton, Neon
+- **Twelve clock faces** — Classic, Minimal, Roman, Modern, Luxury, Skeleton, Neon, Retro, Sport, Art Deco, Celestial, Stargate
+- **Animated Stargate face** — rotating glyph ring, chevrons that light up as hands pass, every-5-second chevron pulses, full-minute all-chevron flash, and a live water-ripple portal
+- **Long-press face selector** — switch faces instantly from the card; the choice is saved permanently to your dashboard YAML
 - **Smooth or Tick second hand** — true continuous sweep or damped-spring mechanical tick with realistic overshoot and recoil
 - **Seven colour pickers** — full control over the card background, dial, text and marks, hour hand, minute hand, second hand, and accent colour
 - **Transparent background** support with adjustable opacity (10–100%)
-- **Tap-to-open popup** — glassmorphic overlay with a large digital clock (12 hr / 24 hr) and a full interactive calendar
-- **Interactive calendar** — Monday-first grid, month navigation, today highlighted with the accent colour
+- **Tap-to-open popup** — glassmorphic overlay with a large digital clock (12 hr / 24 hr) and full date
+- **Interactive calendar** — monthly grid, Monday-first, with month navigation; tap any date to see its events
+- **Home Assistant calendar integration** — fetches events directly from a configured calendar entity and displays them below the calendar grid
 - **Optional popup link** — configure a URL that appears as a button at the bottom of the popup
 - **Optional date display** below the clock on the card face
 - **Full visual editor** — no YAML required
@@ -64,26 +67,29 @@ second_hand_color: "#FF3B30"
 accent_color: "#007AFF"
 show_date: false
 popup_url: ""
+calendar_entity: calendar.home
 ```
 
 ### Options
 
-| Option              | Type    | Default     | Description                                                                 |
-|---------------------|---------|-------------|-----------------------------------------------------------------------------|
-| `face`              | string  | `classic`   | Clock face style: `classic`, `minimal`, `roman`, `modern`, `luxury`, `skeleton`, `neon` |
-| `show_seconds`      | boolean | `true`      | Show or hide the second hand                                                |
-| `seconds_style`     | string  | `smooth`    | Second hand mode: `smooth` (continuous sweep) or `tick` (mechanical spring) |
-| `popup_format`      | string  | `12`        | Digital clock format in the popup: `12` or `24`                            |
-| `card_background`   | string  | `#1C1C1E`   | Card background colour, or `transparent` to show through to the dashboard  |
-| `card_opacity`      | number  | `88`        | Background opacity as a percentage (10–100). Ignored when transparent      |
-| `dial_color`        | string  | `#1C1C1E`   | Clock dial fill colour                                                      |
-| `dial_text_color`   | string  | `#FFFFFF`   | Colour of numerals, indices, and tick marks on the dial                    |
-| `hour_hand_color`   | string  | `#FFFFFF`   | Hour hand colour                                                            |
-| `minute_hand_color` | string  | `#FFFFFF`   | Minute hand colour                                                          |
-| `second_hand_color` | string  | `#FF3B30`   | Second hand and centre cap colour                                           |
-| `accent_color`      | string  | `#007AFF`   | Accent colour used for glow effects, calendar today highlight, and the popup colon pulse |
-| `show_date`         | boolean | `false`     | Show the current date below the clock on the card face                     |
-| `popup_url`         | string  | `""`        | URL to open as a link at the bottom of the popup. Leave blank to disable   |
+| Option              | Type    | Default          | Description                                                                                         |
+|---------------------|---------|------------------|-----------------------------------------------------------------------------------------------------|
+| `face`              | string  | `classic`        | Clock face: `classic`, `minimal`, `roman`, `modern`, `luxury`, `skeleton`, `neon`, `retro`, `sport`, `art_deco`, `celestial`, `stargate` |
+| `show_seconds`      | boolean | `true`           | Show or hide the second hand                                                                        |
+| `seconds_style`     | string  | `smooth`         | Second hand mode: `smooth` (continuous sweep) or `tick` (mechanical spring)                        |
+| `popup_format`      | string  | `12`             | Digital clock format in the popup: `12` or `24`                                                    |
+| `card_background`   | string  | `#1C1C1E`        | Card background colour, or `transparent` to show through to the dashboard                          |
+| `card_opacity`      | number  | `88`             | Background opacity as a percentage (10–100). Ignored when transparent                              |
+| `dial_color`        | string  | `#1C1C1E`        | Clock dial fill colour                                                                              |
+| `dial_text_color`   | string  | `#FFFFFF`        | Colour of numerals, indices, and tick marks on the dial                                            |
+| `hour_hand_color`   | string  | `#FFFFFF`        | Hour hand colour                                                                                    |
+| `minute_hand_color` | string  | `#FFFFFF`        | Minute hand colour                                                                                  |
+| `second_hand_color` | string  | `#FF3B30`        | Second hand and centre cap colour                                                                   |
+| `accent_color`      | string  | `#007AFF`        | Accent colour used for glow, calendar today highlight, and the popup colon pulse                   |
+| `show_date`         | boolean | `false`          | Show the current date below the clock on the card face                                             |
+| `popup_url`         | string  | `""`             | URL to open as a link at the bottom of the popup. Leave blank to disable                           |
+| `popup_url_title`   | string  | `""`             | Custom label for the popup link. Defaults to the hostname if left blank                            |
+| `calendar_entity`   | string  | `calendar.home`  | Home Assistant calendar entity to fetch events from                                                |
 
 ---
 
@@ -110,6 +116,28 @@ Diamond-shaped markers at each hour position with structural decorative rings on
 ### Neon
 Glowing canvas effects using the accent colour. Marker dots and hands are rendered with a multi-layer glow, with a bright white core on the hands for a neon tube effect. Works best with a vivid accent colour against a dark dial.
 
+### Retro
+Vintage-inspired Roman numerals with a warm, aged aesthetic and classic hand styling.
+
+### Sport
+Bold geometric bar markers with strong contrast hands designed for high-legibility at a glance.
+
+### Art Deco
+Pointed gold indices tapering to a fine tip, paired with serif numerals at the quarter positions. Inspired by 1920s and 1930s decorative design.
+
+### Celestial
+Multi-pointed star markers at each hour position with a deep-space aesthetic. The accent colour drives the star glow. Works particularly well with dark dials and gold or warm accent colours.
+
+### Stargate
+A fully animated gate face. Features include:
+
+- A rotating outer ring of 39 randomised glyph slots
+- Twelve chevrons at the hour positions that glow red as the hour, minute, and second hands sweep over them
+- A chevron pulse every five seconds as the second hand crosses each hour marker
+- A simultaneous all-chevron flash on each new minute
+- A kawoosh burst ripple effect on each new minute
+- A dark perspective-foreshortened water portal with animated silver-crested ripples and a pulsing blue event-horizon rim
+
 ---
 
 ## Second Hand Modes
@@ -122,16 +150,29 @@ A damped-spring animation. On each new second the hand jumps slightly past the t
 
 ---
 
+## Long-Press Face Selector
+
+Long-pressing the clock (hold for approximately 0.6 seconds) opens an overlay grid showing all twelve clock faces. Tap any face to switch instantly — the card updates live and the selection is written back to your dashboard configuration automatically, so the chosen face persists across page reloads without any manual YAML editing.
+
+---
+
 ## Tap Popup
 
 Tapping anywhere on the clock opens a popup overlay with:
 
 - **Large digital time** — displayed in the format selected in the visual editor (12-hour with AM/PM, or 24-hour)
 - **Full date line** — day of week, date, month, and year
-- **Interactive calendar** — monthly grid, Monday-first, with navigation arrows and a **Today** button to return to the current month
+- **Interactive calendar** — monthly grid, Monday-first, with navigation arrows
+- **Calendar events** — tap any date to fetch and display events from your configured Home Assistant calendar entity below the grid
 - **Optional link** — if a URL is configured, a styled button appears at the bottom of the popup
 
-The current day is highlighted with a filled circle in the accent colour. Days from the previous and next month are shown at reduced opacity to fill the grid. The popup can be closed with the × button or by pressing Escape.
+The current day is highlighted with a filled circle in the accent colour. The popup can be closed with the × button, by tapping outside it, or by pressing Escape.
+
+---
+
+## Calendar Events
+
+Set `calendar_entity` in the card configuration to a Home Assistant calendar entity (for example `calendar.home`). When the popup is open, tapping any date fetches events for that day directly from the Home Assistant calendar API and displays them below the calendar grid, including event titles, times, and locations where available.
 
 ---
 
@@ -139,9 +180,9 @@ The current day is highlighted with a filled circle in the accent colour. Days f
 
 Seven colour pickers in the visual editor control every visual element of the card.
 
-**Card Background** includes an optional **None** setting that makes the card surface fully transparent, allowing your dashboard background to show through. When a colour is selected, an opacity slider (10–100%) controls how opaque the background appears — useful for layering the clock over a dashboard background image or coloured panel.
+**Card Background** includes an optional **None** setting that makes the card surface fully transparent, allowing your dashboard background to show through. When a colour is selected, an opacity slider (10–100%) controls how opaque the background appears — useful for layering the clock over a background image or coloured panel.
 
-The **Accent / Highlight** colour is used in several places: the glow and marker colour in the Neon face, the tick marks in the Modern face, the baton index and hand highlight in the Luxury face, the today highlight circle in the popup calendar, and the pulsing colon in the digital clock display.
+The **Accent / Highlight** colour is used in several places: the glow and marker colour in the Neon face, the tick marks in the Modern face, the star glow in the Celestial face, the event-horizon rim in the Stargate face, the today highlight circle in the popup calendar, and the pulsing colon in the digital clock display.
 
 ---
 
