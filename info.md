@@ -1,12 +1,16 @@
 # Crocodile Clock Card
 
-A customisable analog clock card for Home Assistant Lovelace dashboards. Choose from seven clock faces, configure a smooth sweep or snappy mechanical tick second hand, and tap the clock to reveal a glassmorphic popup with a large digital clock, interactive calendar, and optional link.
+A customisable analog clock card for Home Assistant Lovelace dashboards. Choose from twelve clock faces, configure a smooth sweep or snappy mechanical tick second hand, and tap the clock to reveal a glassmorphic popup with a large digital clock, interactive calendar with Home Assistant calendar events, and an optional link. Long-press the clock to switch faces instantly — the choice is saved automatically to your dashboard.
 
 ## Clock faces
 
-Seven distinct faces are available: **Classic** (Arabic numerals), **Minimal** (dot indices, clean stick hands), **Roman** (Roman numeral dial), **Modern** (bold quarter numerals with accent tick marks), **Luxury** (gold baton indices with highlighted baton hands), **Skeleton** (diamond markers with structural rings), and **Neon** (glowing accent-coloured elements with canvas glow effects).
+Twelve distinct faces are available: **Classic** (Arabic numerals with tapered hands), **Minimal** (dot indices with clean stick hands), **Roman** (Roman numeral dial), **Modern** (bold quarter numerals with accent tick marks), **Luxury** (gold baton indices and baton hands), **Skeleton** (diamond markers with structural rings), **Neon** (glowing accent-coloured elements), **Retro** (vintage-styled Roman numerals), **Sport** (bold geometric markers), **Art Deco** (pointed gold indices with serif numerals), **Celestial** (star markers with a deep-space aesthetic), and **Stargate** (an animated portal with a rotating glyph ring, twelve chevrons, and a living water-ripple puddle).
 
-Select a face in the visual editor — it takes effect immediately with no page reload needed.
+Long-press the clock face to open the face selector and switch instantly. The selected face is saved permanently to your dashboard YAML with no manual editing required.
+
+## Stargate face
+
+The Stargate face renders an animated Dhd-style gate: a rotating outer ring of 39 glyph slots, twelve chevrons at the hour positions, and a dark water portal with perspective-foreshortened ripples. The chevrons respond to the clock hands — lighting red as each hand passes over them. Every five seconds one chevron briefly illuminates, and when the minute turns all twelve flash simultaneously. A kawoosh burst plays on each new minute.
 
 ## Second hand
 
@@ -28,7 +32,15 @@ Seven colour pickers give full control over the look of the card:
 
 ## Tap popup
 
-Tapping the clock opens a glassmorphic overlay with a large digital time display in either 12-hour or 24-hour format, the full current date, and an interactive monthly calendar. Navigate between months with the arrow buttons or jump back to the current month with the **Today** button. The current day is highlighted with the accent colour. If a URL is configured, a styled link button appears at the bottom of the popup. Close by tapping the × button or pressing Escape.
+Tapping the clock opens a glassmorphic overlay with a large digital time display in either 12-hour or 24-hour format, the full current date, and an interactive monthly calendar. Navigate between months with the arrow buttons. The current day is highlighted with the accent colour. If a Home Assistant calendar entity is configured, events for the selected day are shown below the calendar grid. If a URL is configured, a styled link button appears at the bottom of the popup. Close by tapping the × button, tapping outside the popup, or pressing Escape.
+
+## Calendar events
+
+Set `calendar_entity` to a Home Assistant calendar entity (e.g. `calendar.home`) and the popup will display events for whichever day you tap in the calendar. Click any date to see its events. The card fetches events directly from the Home Assistant calendar API.
+
+## Long-press face selector
+
+Long-pressing the clock (600 ms) opens an overlay showing all twelve faces as a grid. Tap any face to switch immediately — the card updates live and the new face is written back to your dashboard configuration automatically.
 
 ## Display options
 
