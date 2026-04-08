@@ -1211,7 +1211,7 @@ class CrocodileClockCard extends HTMLElement {
       const isAnimated = face === 'stargate';
       const isSmooth   = cfg.show_seconds && cfg.seconds_style !== 'tick';
       const isTick     = cfg.show_seconds && cfg.seconds_style === 'tick';
-      const inSpring   = isTick && (now - this._springStart * 1) < 340;
+      const inSpring   = isTick && this._springStart > 0 && (Date.now() - this._springStart) < 340;
 
       // Non-animated faces: cap to ~1 fps (redraw only when the second changes)
       // Animated faces (stargate, smooth sweep, active spring): run at full rAF
