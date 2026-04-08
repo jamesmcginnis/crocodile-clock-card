@@ -583,7 +583,7 @@ class CrocodileClockDrawer {
       const py   = Math.sin(a) * dist;
       ctx.save();
       ctx.translate(px, py);
-      ctx.shadowColor = star; ctx.shadowBlur = isMaj ? 12 : 6;
+      ctx.shadowColor = star; ctx.shadowBlur = isMaj ? 7 : 3;
       this._drawStar(ctx, 0, 0,
         r * (isMaj ? 0.050 : 0.028),
         r * (isMaj ? 0.022 : 0.012),
@@ -623,6 +623,7 @@ class CrocodileClockDrawer {
 
     if (!this._sg) {
       this._sg = {
+
         ripples: [], rippleTimer: 0,
         kawoosh: null, ringRotation: 0, lastFrame: now,
         prevMinute: -1, hourFlash: -99999,
@@ -630,13 +631,12 @@ class CrocodileClockDrawer {
         prevHourChev: -1, prevMinChev: -1, prevSecChev: -1,
         lastFiveSec: -1, allFlash: -99999, prevSecond: -1,
         // Dialling-sequence state
-        // dialPhase: 'idle' | 'dialling' | 'locked'
         dialPhase: 'idle',
-        dialStart: -99999,   // timestamp when dialling began
-        dialLitCount: 0,     // how many chevrons are currently locked on
-        dialLastLit: -99999, // timestamp of the last sequential lock-on
-        lockedChevrons: new Set(), // which chevron indices are permanently lit
-        dialResetPending: false,   // true once s===0 flash fires; reset after flash settles
+        dialStart: -99999,
+        dialLitCount: 0,
+        dialLastLit: -99999,
+        lockedChevrons: new Set(),
+        dialResetPending: false,
         dialResetAt: -99999,
       };
     }
@@ -649,6 +649,7 @@ class CrocodileClockDrawer {
     const rOuter  = r * 0.99;
     const rPortal = r * 0.745;
     const PERSP   = 0.50;
+
 
     // ── 12-chevron hand collision ──────────────────────────────────
     // angleToChev: maps a 0-based CW hand angle (0 = 12 o'clock) to chevron 0-11
@@ -696,38 +697,24 @@ class CrocodileClockDrawer {
     sg.chevGlow = sg.chevGlow.filter(g => now - g.born < 1100);
 
     // ── Dialling-sequence: start at 5 s, light chevrons 1-by-1, stay lit ──
-    // Phase transitions:
-    //   idle      → dialling  : when s >= 5 for the first time each minute
-    //   dialling  → locked    : when all 12 chevrons are lit
-    //   locked    → idle      : when s===0 (top of minute) flash settles (~1.4 s after)
-
-    // Kick off dialling at s=5 each minute
     if (s >= 5 && sg.dialPhase === 'idle') {
       sg.dialPhase    = 'dialling';
       sg.dialStart    = now;
       sg.dialLitCount = 0;
-      sg.dialLastLit  = now - 999; // trigger first lock-on immediately
+      sg.dialLastLit  = now - 999;
       sg.lockedChevrons.clear();
     }
-
-    // Sequentially light next chevron every ~0.85 s during dialling
     if (sg.dialPhase === 'dialling') {
-      const CHEV_INTERVAL = 850; // ms between each chevron lock-on
+      const CHEV_INTERVAL = 850;
       if (sg.dialLitCount < 12 && (now - sg.dialLastLit) >= CHEV_INTERVAL) {
-        const nextIdx = sg.dialLitCount; // light chevrons in order 0→11
+        const nextIdx = sg.dialLitCount;
         sg.lockedChevrons.add(nextIdx);
         sg.dialLitCount++;
         sg.dialLastLit = now;
-        // Also fire the brief flash glow for this chevron
         sg.chevGlow.push({ idx: nextIdx, born: now });
       }
-      if (sg.dialLitCount >= 12) {
-        sg.dialPhase = 'locked';
-      }
+      if (sg.dialLitCount >= 12) sg.dialPhase = 'locked';
     }
-
-    // On s===0 (top of minute): all-chevron flash fires, then reset dial state
-    // We schedule the reset ~1400 ms after the flash so it doesn't cut off the glow.
     if (s === 0 && !sg.dialResetPending && sg.dialPhase !== 'idle') {
       sg.dialResetPending = true;
       sg.dialResetAt = now + 1400;
@@ -739,18 +726,6 @@ class CrocodileClockDrawer {
       sg.lockedChevrons.clear();
     }
 
-    // ── Ripple spawning ────────────────────────────────────────────
-    sg.rippleTimer++;
-    if (sg.rippleTimer % 100 === 0) {
-      const ang = Math.random() * PI2, rad = Math.random() * 0.38;
-      sg.ripples.push({
-        r: 2, op: 0.55, born: now,
-        ox: Math.cos(ang) * rPortal * rad,
-        oy: Math.sin(ang) * rPortal * rad * PERSP,
-        spd: rPortal * (0.009 + Math.random() * 0.004),
-        tilt: (Math.random() - 0.5) * 0.20,
-      });
-    }
     if (m !== sg.prevMinute) {
       sg.prevMinute = m;
       sg.kawoosh = { p: 0, maxR: rPortal * 2.8 };
@@ -794,7 +769,7 @@ class CrocodileClockDrawer {
     });
     ctx.restore();
 
-    // ── DRAW 2: Portal puddle — clean dark water with ripples only ─
+    // ── DRAW 2: Portal puddle — still dark water ──────────────────
     ctx.save();
     ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.clip();
 
@@ -819,7 +794,9 @@ class CrocodileClockDrawer {
     ctx.fillStyle=edgeG;
     ctx.beginPath(); ctx.arc(0,0,rPortal,0,PI2); ctx.fill();
 
-    // Ripple ellipses — perspective-foreshortened water rings, no extras
+
+
+    // Ripple ellipses — minute-change and on-the-hour only
     for (const rp of sg.ripples) {
       if (now < rp.born || rp.r <= 0 || rp.r > rPortal * 1.05) continue;
       const rx = rp.r, ry = rx * PERSP;
@@ -828,7 +805,7 @@ class CrocodileClockDrawer {
       if (rp.tilt) ctx.rotate(rp.tilt);
       ctx.globalAlpha = rp.op;
 
-      // Dark trough — slightly wider ring beneath the crest
+      // Dark trough
       ctx.beginPath(); ctx.ellipse(0,0,rx*1.022,ry*1.022,0,0,PI2);
       ctx.strokeStyle = 'rgba(0,4,18,0.72)';
       ctx.lineWidth = rPortal * 0.020 * Math.max(0.14, rp.op); ctx.stroke();
@@ -841,7 +818,7 @@ class CrocodileClockDrawer {
       ctx.globalAlpha = 1; ctx.restore();
     }
 
-    // Kawoosh minute-change burst — brief subtle flash
+    // Kawoosh minute-change burst
     if (sg.kawoosh) {
       const kp = sg.kawoosh.p, kr = Math.min(sg.kawoosh.maxR * kp, rPortal * 1.01);
       const kop = Math.max(0, 1 - kp * 1.30);
@@ -866,7 +843,7 @@ class CrocodileClockDrawer {
     const rimP = 0.45 + Math.sin(T * 1.25) * 0.08;
     ctx.beginPath(); ctx.arc(0,0,rPortal+r*0.009,0,PI2);
     ctx.strokeStyle=`rgba(48,158,255,${rimP})`; ctx.lineWidth=r*0.019;
-    ctx.shadowColor='rgba(0,130,255,0.88)'; ctx.shadowBlur=14; ctx.stroke();
+    ctx.shadowColor='rgba(0,130,255,0.88)'; ctx.shadowBlur=8; ctx.stroke();
     ctx.beginPath(); ctx.arc(0,0,rPortal-r*0.004,0,PI2);
     ctx.strokeStyle=`rgba(172,232,255,${0.28+Math.sin(T*0.80)*0.07})`;
     ctx.lineWidth=r*0.005; ctx.shadowBlur=4; ctx.stroke();
@@ -902,9 +879,7 @@ class CrocodileClockDrawer {
       const gAge  = ge ? (now - ge.born) / 1000 : 1;
       const handLit  = !!ge && gAge < 1.0;
       const handFade = handLit ? Math.pow(1 - gAge, 1.5) : 0;
-      // Dial-sequence: permanently lit chevron (stays on until s===0 reset)
       const dialLocked = sg.lockedChevrons.has(i);
-      // Brief white flash when this chevron first locks on during dial sequence
       const dialFlash  = dialLocked && handLit && gAge < 0.38;
       const isRed    = isLocked || lockFlash || handLit || dialLocked;
 
@@ -930,17 +905,15 @@ class CrocodileClockDrawer {
         const rg=ctx.createLinearGradient(0,-vH*.52,0,vH*.28);
         const anyFlash = lockFlash || dialFlash;
         if (anyFlash) {
-          // Bright white burst on first lock-on
           rg.addColorStop(0,'#FFFFFF'); rg.addColorStop(.28,'#FFBBAA'); rg.addColorStop(1,'#FF2200');
         } else {
-          // Steady glow for permanently locked chevrons; fade for transient hand-lit ones
           const b = (isLocked || dialLocked) ? 1.0 : handFade;
           rg.addColorStop(0,`rgb(255,${Math.round(58+b*30)},${Math.round(b*16)})`);
           rg.addColorStop(.5,'#EE1800'); rg.addColorStop(1,'#BB0D00');
         }
         ctx.fillStyle=rg;
         ctx.shadowColor=(lockFlash||dialFlash)?'rgba(255,225,200,1)':'rgba(255,18,0,0.96)';
-        ctx.shadowBlur=(lockFlash||dialFlash)?30:((isLocked||dialLocked)?22:handFade*24);
+        ctx.shadowBlur=(lockFlash||dialFlash)?20:((isLocked||dialLocked)?14:handFade*16);
       } else {
         const ug=ctx.createLinearGradient(0,-vH*.52,0,vH*.28);
         ug.addColorStop(0,'#4a4032'); ug.addColorStop(.5,'#302818'); ug.addColorStop(1,'#1c1508');
@@ -1214,24 +1187,54 @@ class CrocodileClockCard extends HTMLElement {
   _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
 
   _getTimeParts() {
-    let now = new Date();
-    const ms = now.getMilliseconds();
+    const wallNow = new Date();
+    const ms = wallNow.getMilliseconds();
     const timezone = this._config?.timezone
       || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const opts = part => ({ [part]: 'numeric', timeZone: timezone });
-    const year   = now.toLocaleString('sv-SE', opts('year'));
-    const month  = now.toLocaleString('sv-SE', opts('month'));
-    const day    = now.toLocaleString('sv-SE', opts('day'));
-    const hour   = now.toLocaleString('sv-SE', opts('hour'));
-    const minute = now.toLocaleString('sv-SE', opts('minute'));
-    const second = now.toLocaleString('sv-SE', opts('second'));
-    now = new Date(year, month - 1, day, hour, minute, second);
-    return { h: now.getHours(), m: now.getMinutes(), s: now.getSeconds(), ms };
+    // Single toLocaleString call instead of six — ~5-6x cheaper
+    const parts = new Intl.DateTimeFormat('en-US', {
+      hour: 'numeric', minute: 'numeric', second: 'numeric',
+      hour12: false, timeZone: timezone,
+    }).formatToParts(wallNow);
+    const p = {};
+    parts.forEach(({ type, value }) => { p[type] = parseInt(value, 10); });
+    return { h: p.hour === 24 ? 0 : p.hour, m: p.minute, s: p.second, ms };
   }
 
   _startClock() {
+    // Frame-skip state for power saving
+    this._lastTickMs = 0;
     const tick = () => {
-      const cfg              = this._config;
+      const cfg = this._config;
+      const now = performance.now();
+      const face = cfg.face || 'classic';
+      const isAnimated = face === 'stargate';
+      const isSmooth   = cfg.show_seconds && cfg.seconds_style !== 'tick';
+      const isTick     = cfg.show_seconds && cfg.seconds_style === 'tick';
+      const inSpring   = isTick && (now - this._springStart * 1) < 340;
+
+      // Non-animated faces: cap to ~1 fps (redraw only when the second changes)
+      // Animated faces (stargate, smooth sweep, active spring): run at full rAF
+      if (!isAnimated && !isSmooth && !inSpring) {
+        const { h, m, s, ms } = this._getTimeParts();
+        // Only redraw when the second hand has changed
+        if (s === this._lastDrawnSec) {
+          this._raf = requestAnimationFrame(tick);
+          return;
+        }
+        this._lastDrawnSec = s;
+        const dateEl = this.shadowRoot.getElementById('cc-date-el');
+        if (dateEl) {
+          const tz = cfg.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+          dateEl.textContent = new Date().toLocaleDateString('en-GB', {
+            weekday: 'short', month: 'short', day: 'numeric', timeZone: tz,
+          });
+        }
+        if (this._drawer) this._drawer.draw(h, m, s, this._currAngle);
+        this._raf = requestAnimationFrame(tick);
+        return;
+      }
+
       const { h, m, s, ms } = this._getTimeParts();
 
       let secAngle;
@@ -1262,13 +1265,17 @@ class CrocodileClockCard extends HTMLElement {
         }
       }
 
-      const dateEl = this.shadowRoot.getElementById('cc-date-el');
-      if (dateEl) {
-        const tz = this._config?.timezone
-          || Intl.DateTimeFormat().resolvedOptions().timeZone;
-        dateEl.textContent = new Date().toLocaleDateString('en-GB', {
-          weekday: 'short', month: 'short', day: 'numeric', timeZone: tz,
-        });
+      // Update date label once per second only
+      if (s !== this._lastDateSec) {
+        this._lastDateSec = s;
+        const dateEl = this.shadowRoot.getElementById('cc-date-el');
+        if (dateEl) {
+          const tz = this._config?.timezone
+            || Intl.DateTimeFormat().resolvedOptions().timeZone;
+          dateEl.textContent = new Date().toLocaleDateString('en-GB', {
+            weekday: 'short', month: 'short', day: 'numeric', timeZone: tz,
+          });
+        }
       }
 
       if (this._drawer) this._drawer.draw(h, m, s, secAngle);
