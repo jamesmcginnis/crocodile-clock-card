@@ -1,20 +1,24 @@
 # Crocodile Clock Card
 
-A customisable analog clock card for Home Assistant Lovelace dashboards. Choose from twelve clock faces, configure a smooth sweep or snappy mechanical tick second hand, and tap the clock to reveal a glassmorphic popup with a large digital clock, interactive calendar with Home Assistant calendar events, and an optional link.
+A customisable analog clock card for Home Assistant Lovelace dashboards. Choose from twelve clock faces, configure a smooth sweep second hand, and tap the clock to reveal a glassmorphic popup with a large digital clock, interactive calendar with Home Assistant calendar events, and an optional link.
 
 ## Clock faces
 
-Twelve distinct faces are available: **Classic** (Arabic numerals with tapered hands), **Minimal** (dot indices with clean stick hands), **Roman** (Roman numeral dial), **Modern** (bold quarter numerals with accent tick marks), **Luxury** (gold baton indices and baton hands), **Skeleton** (diamond markers with structural rings), **Neon** (glowing accent-coloured elements), **Retro** (vintage-styled Roman numerals), **Sport** (bold geometric markers), **Art Deco** (pointed gold indices with serif numerals), **Celestial** (star markers with a deep-space aesthetic), and **Stargate** (an animated portal with a rotating glyph ring, twelve chevrons, and a living water-ripple puddle).
+Twelve distinct faces are available: **Classic** (Arabic numerals with tapered hands), **Minimal** (dot indices with clean stick hands), **Roman** (Roman numeral dial), **Modern** (bold quarter numerals with accent tick marks), **Luxury** (gold baton indices and baton hands), **Skeleton** (diamond markers with structural rings), **Neon** (glowing accent-coloured elements), **Retro** (vintage-styled Roman numerals), **Sport** (bold geometric markers), **Art Deco** (pointed gold indices with serif numerals), **Celestial** (star markers with a deep-space aesthetic), and **Stargate** (an animated portal with a rotating glyph ring, twelve chevrons, and a dark water portal).
 
 Clock faces are selected from the visual editor.
 
 ## Stargate face
 
-The Stargate face renders an animated Dhd-style gate: a rotating outer ring of 39 glyph slots, twelve chevrons at the hour positions, and a dark water portal with perspective-foreshortened ripples. The chevrons respond to the clock hands — lighting red as each hand passes over them. Every five seconds one chevron briefly illuminates, and when the minute turns all twelve flash simultaneously. A kawoosh burst plays on each new minute.
+The Stargate face renders an animated gate: a rotating outer ring of 39 glyph slots, twelve chevrons at the hour positions, and a dark water portal with a pulsing blue event-horizon rim. The chevrons respond to the clock hands — lighting red as each hand passes over them.
+
+Starting at five seconds past each minute, the chevrons lock on sequentially one by one, each firing a brief white flash as it illuminates and then holding a steady red glow. All twelve remain lit until the second hand reaches sixty, at which point all chevrons flash simultaneously before resetting for the next minute.
+
+On each new minute a kawoosh burst plays across the portal, accompanied by a set of expanding perspective-foreshortened ripple rings. On the hour, an additional ripple burst fires. Between these events the portal surface is still.
 
 ## Second hand
 
-Two modes are available. **Smooth** moves the second hand continuously with no visible steps — a true sweep. **Tick** uses a damped-spring animation: the hand jumps slightly past each second mark then springs back, giving a realistic mechanical feel with a subtle overshoot and recoil.
+The second hand moves continuously with no visible steps — a true smooth sweep. One full rotation every sixty seconds with no pausing, jumping, or ticking.
 
 The second hand can be hidden entirely using the toggle in the visual editor.
 
