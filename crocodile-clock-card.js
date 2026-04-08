@@ -1,7 +1,7 @@
 /**
  * Crocodile Clock Card
  * Home Assistant custom Lovelace card — Beautiful analog clock with twelve
- * distinct clock faces, smooth sweep or mechanical tick second hand,
+ * distinct clock faces, smooth sweep second hand,
  * glassmorphic popup with digital clock + interactive calendar with HA events,
  * and a visual editor for selecting clock faces and customising all settings.
  *
@@ -1058,9 +1058,7 @@ class CrocodileClockCard extends HTMLElement {
     this.attachShadow({ mode: 'open' });
     this._raf          = null;
     this._lastSec      = -1;
-    this._springFrom   = 0;
-    this._springTarget = 0;
-    this._springStart  = 0;
+
     this._currAngle    = 0;
     this._ro           = null;
   }
@@ -1073,7 +1071,6 @@ class CrocodileClockCard extends HTMLElement {
     return {
       face:              'classic',
       show_seconds:      true,
-      seconds_style:     'smooth',
       popup_format:      '12',
       card_background:   '#1C1C1E',
       card_opacity:      88,
@@ -1184,8 +1181,6 @@ class CrocodileClockCard extends HTMLElement {
   }
 
   // ── Animation loop ─────────────────────────────────────────────
-  _easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
-
   _getTimeParts() {
     const wallNow = new Date();
     const ms = wallNow.getMilliseconds();
@@ -1209,13 +1204,11 @@ class CrocodileClockCard extends HTMLElement {
       const now = performance.now();
       const face = cfg.face || 'classic';
       const isAnimated = face === 'stargate';
-      const isSmooth   = cfg.show_seconds && cfg.seconds_style !== 'tick';
-      const isTick     = cfg.show_seconds && cfg.seconds_style === 'tick';
-      const inSpring   = isTick && this._springStart > 0 && (Date.now() - this._springStart) < 340;
+      const isSmooth   = cfg.show_seconds;
 
       // Non-animated faces: cap to ~1 fps (redraw only when the second changes)
-      // Animated faces (stargate, smooth sweep, active spring): run at full rAF
-      if (!isAnimated && !isSmooth && !inSpring) {
+      // Animated faces (stargate, smooth sweep): run at full rAF
+      if (!isAnimated && !isSmooth) {
         const { h, m, s, ms } = this._getTimeParts();
         // Only redraw when the second hand has changed
         if (s === this._lastDrawnSec) {
@@ -1239,30 +1232,8 @@ class CrocodileClockCard extends HTMLElement {
 
       let secAngle;
       if (cfg.show_seconds) {
-        if (cfg.seconds_style === 'tick') {
-          const now    = Date.now();
-          const rawSec = Math.floor(now / 1000);
-          if (rawSec !== this._lastSec) {
-            this._lastSec      = rawSec;
-            this._springFrom   = this._currAngle;
-            this._springTarget = (s / 60) * 2 * Math.PI;
-            if (this._springTarget < this._springFrom - Math.PI) {
-              this._springTarget += 2 * Math.PI;
-            }
-            this._springStart = now;
-          }
-          const elapsed   = (Date.now() - this._springStart) / 1000;
-          const DURATION  = 0.32;
-          const t         = Math.min(elapsed / DURATION, 1);
-          const OVERSHOOT = 6.5 * Math.PI / 180;
-          const progress  = this._easeOutCubic(t);
-          const bounce    = OVERSHOOT * Math.sin(t * Math.PI) * (1 - t * 0.80);
-          secAngle        = this._springFrom + (this._springTarget - this._springFrom) * progress + bounce;
-          this._currAngle = secAngle;
-        } else {
-          secAngle        = ((s + ms / 1000) / 60) * 2 * Math.PI;
-          this._currAngle = secAngle;
-        }
+        secAngle        = ((s + ms / 1000) / 60) * 2 * Math.PI;
+        this._currAngle = secAngle;
       }
 
       // Update date label once per second only
@@ -1776,21 +1747,7 @@ class CrocodileClockCardEditor extends HTMLElement {
                 <span class="toggle-track"></span>
               </label>
             </div>
-            <div class="select-row" style="border-top:1px solid var(--divider-color,rgba(0,0,0,0.06));">
-              <label>Movement Style</label>
-              <div class="hint" style="margin-bottom:8px;">
-                <b>Smooth</b> — Continuous sweep like a luxury watch. &nbsp;
-                <b>Tick</b> — Mechanical jump with a realistic spring overshoot.
-              </div>
-              <div class="segmented">
-                <input type="radio" name="cc_secs" id="cc_ss_s" value="smooth"
-                  ${(cfg.seconds_style || 'smooth') === 'smooth' ? 'checked' : ''}>
-                <label for="cc_ss_s">🔄 Smooth</label>
-                <input type="radio" name="cc_secs" id="cc_ss_t" value="tick"
-                  ${cfg.seconds_style === 'tick' ? 'checked' : ''}>
-                <label for="cc_ss_t">⚙️ Tick</label>
-              </div>
-            </div>
+
           </div>
         </div>
 
@@ -1990,7 +1947,6 @@ class CrocodileClockCardEditor extends HTMLElement {
     });
 
     // Segmented controls
-    root.querySelectorAll('input[name="cc_secs"]').forEach(r => r.onchange = () => this._set('seconds_style', r.value));
     root.querySelectorAll('input[name="cc_pfmt"]').forEach(r => r.onchange = () => this._set('popup_format', r.value));
 
     // Text inputs
@@ -2086,6 +2042,6 @@ if (!window.customCards.some(c => c.type === 'crocodile-clock-card')) {
     type:        'crocodile-clock-card',
     name:        'Crocodile Clock Card',
     preview:     false,
-    description: 'Beautiful analog clock with twelve faces including an animated Stargate portal, smooth or mechanical tick seconds, and a glassmorphic popup with digital clock, interactive calendar and Home Assistant calendar events.',
+    description: 'Beautiful analog clock with twelve faces including an animated Stargate portal, smooth sweep seconds, and a glassmorphic popup with digital clock, interactive calendar and Home Assistant calendar events.',
   });
 }
