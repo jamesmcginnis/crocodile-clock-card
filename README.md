@@ -1,6 +1,6 @@
 # Crocodile Clock Card
 
-A custom Home Assistant Lovelace card featuring a fully customisable analog clock with twelve distinct clock faces, a smooth sweep or mechanical tick second hand, live Home Assistant calendar events, and a glassmorphic popup with a large digital clock, interactive calendar, and optional link.
+A custom Home Assistant Lovelace card featuring a fully customisable analog clock with twelve distinct clock faces, a smooth sweep second hand, live Home Assistant calendar events, and a glassmorphic popup with a large digital clock, interactive calendar, and optional link.
 
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 
@@ -11,8 +11,8 @@ A custom Home Assistant Lovelace card featuring a fully customisable analog cloc
 ## Features
 
 - **Twelve clock faces** — Classic, Minimal, Roman, Modern, Luxury, Skeleton, Neon, Retro, Sport, Art Deco, Celestial, Stargate
-- **Animated Stargate face** — rotating glyph ring, chevrons that light up as hands pass, every-5-second chevron pulses, full-minute all-chevron flash, and a live water-ripple portal
-- **Smooth or Tick second hand** — true continuous sweep or damped-spring mechanical tick with realistic overshoot and recoil
+- **Animated Stargate face** — rotating glyph ring, sequential chevron dialling sequence from 5 seconds, chevrons that stay lit and reset on the minute, minute-change kawoosh burst with ripple rings, and on-the-hour ripple burst
+- **Smooth sweep second hand** — true continuous movement with no stepping or ticking
 - **Seven colour pickers** — full control over the card background, dial, text and marks, hour hand, minute hand, second hand, and accent colour
 - **Transparent background** support with adjustable opacity (10–100%)
 - **Tap-to-open popup** — glassmorphic overlay with a large digital clock (12 hr / 24 hr) and full date
@@ -54,7 +54,6 @@ The card has a full visual editor — click the pencil icon after adding it to a
 type: custom:crocodile-clock-card
 face: classic
 show_seconds: true
-seconds_style: smooth
 popup_format: "12"
 card_background: "#1C1C1E"
 card_opacity: 88
@@ -75,7 +74,6 @@ calendar_entity: calendar.home
 |---------------------|---------|------------------|-----------------------------------------------------------------------------------------------------|
 | `face`              | string  | `classic`        | Clock face: `classic`, `minimal`, `roman`, `modern`, `luxury`, `skeleton`, `neon`, `retro`, `sport`, `art_deco`, `celestial`, `stargate` |
 | `show_seconds`      | boolean | `true`           | Show or hide the second hand                                                                        |
-| `seconds_style`     | string  | `smooth`         | Second hand mode: `smooth` (continuous sweep) or `tick` (mechanical spring)                        |
 | `popup_format`      | string  | `12`             | Digital clock format in the popup: `12` or `24`                                                    |
 | `card_background`   | string  | `#1C1C1E`        | Card background colour, or `transparent` to show through to the dashboard                          |
 | `card_opacity`      | number  | `88`             | Background opacity as a percentage (10–100). Ignored when transparent                              |
@@ -131,21 +129,18 @@ Multi-pointed star markers at each hour position with a deep-space aesthetic. Th
 A fully animated gate face. Features include:
 
 - A rotating outer ring of 39 randomised glyph slots
-- Twelve chevrons at the hour positions that glow red as the hour, minute, and second hands sweep over them
-- A chevron pulse every five seconds as the second hand crosses each hour marker
-- A simultaneous all-chevron flash on each new minute
-- A kawoosh burst ripple effect on each new minute
-- A dark perspective-foreshortened water portal with animated silver-crested ripples and a pulsing blue event-horizon rim
+- Twelve chevrons at the hour positions that glow red as the hour and minute hands sweep over them
+- A dialling sequence starting at 5 seconds into each minute: chevrons lock on one by one with a white flash, then hold a steady red glow for the remainder of the minute
+- A simultaneous all-chevron flash as the second hand completes each full rotation, after which all chevrons reset
+- A kawoosh burst and expanding perspective-foreshortened ripple rings on each new minute
+- An additional ripple burst on the hour
+- A dark water portal with a pulsing blue event-horizon rim
 
 ---
 
-## Second Hand Modes
+## Second Hand
 
-### Smooth
-The second hand moves continuously with no visible steps between positions. One full rotation every 60 seconds with no pausing, jumping, or ticking.
-
-### Tick
-A damped-spring animation. On each new second the hand jumps slightly past the target position and then springs back, producing a natural overshoot and recoil. The effect closely resembles the feel of a well-tuned mechanical movement.
+The second hand moves continuously with no visible steps between positions — a true smooth sweep. One full rotation every 60 seconds.
 
 ---
 
