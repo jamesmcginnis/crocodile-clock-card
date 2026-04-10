@@ -1389,6 +1389,7 @@ class CrocodileClockCard extends HTMLElement {
       letterSpacing: '-4px', textAlign: 'left',
       lineHeight: '1', marginBottom: '4px',
       fontVariantNumeric: 'tabular-nums',
+      overflow: 'hidden', whiteSpace: 'nowrap',
     });
 
     const ampmEl = document.createElement('div');
@@ -1404,6 +1405,7 @@ class CrocodileClockCard extends HTMLElement {
       fontSize: '14px', fontWeight: '400',
       color: 'rgba(255,255,255,0.45)',
       textAlign: 'left', marginBottom: '22px',
+      overflow: 'hidden', whiteSpace: 'nowrap',
     });
 
     let timeInterval;
