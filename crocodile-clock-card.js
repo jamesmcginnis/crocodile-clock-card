@@ -1412,8 +1412,7 @@ class CrocodileClockCard extends HTMLElement {
     const updateTime = () => {
       const { h: _h, m: _m, s: _s } = self._getTimeParts();
       const mm = String(_m).padStart(2, '0');
-      const ss = String(_s).padStart(2, '0');
-      const sp = cfg.show_seconds ? `:${ss}` : '';
+      const sp = '';
       if (format === '12') {
         const ampm = _h >= 12 ? 'PM' : 'AM';
         const hh12 = _h % 12 || 12;
