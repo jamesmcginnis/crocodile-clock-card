@@ -1386,7 +1386,7 @@ class CrocodileClockCard extends HTMLElement {
     const timeEl = document.createElement('div');
     Object.assign(timeEl.style, {
       fontSize: '76px', fontWeight: '200',
-      letterSpacing: '-4px', textAlign: 'center',
+      letterSpacing: '-4px', textAlign: 'left',
       lineHeight: '1', marginBottom: '4px',
       fontVariantNumeric: 'tabular-nums',
     });
@@ -1395,7 +1395,7 @@ class CrocodileClockCard extends HTMLElement {
     Object.assign(ampmEl.style, {
       fontSize: '20px', fontWeight: '500',
       color: 'rgba(255,255,255,0.40)',
-      textAlign: 'center', letterSpacing: '0.07em',
+      textAlign: 'left', letterSpacing: '0.07em',
       minHeight: '26px', marginBottom: '6px',
     });
 
@@ -1403,7 +1403,7 @@ class CrocodileClockCard extends HTMLElement {
     Object.assign(fullDateEl.style, {
       fontSize: '14px', fontWeight: '400',
       color: 'rgba(255,255,255,0.45)',
-      textAlign: 'center', marginBottom: '22px',
+      textAlign: 'left', marginBottom: '22px',
     });
 
     let timeInterval;
